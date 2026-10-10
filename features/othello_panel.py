@@ -128,13 +128,15 @@ class OthelloPanelView(discord.ui.View):
 
                     @discord.ui.button(label="🎮 盤面表示", style=discord.ButtonStyle.primary)
                     async def show_board_btn(self, board_itx: discord.Interaction, btn):
-                        # 即座に応答を返してタイムアウトを回避
+                        # 処理中と応答してタイムアウト回避
                         await board_itx.response.defer()
                         
                         active_games.add(challenger.id)
                         active_games.add(opponent.id)
                         
+                        # ✅ 修正：引数を3つ渡す（challenger=黒, opponent=白）
                         game_view = OthelloView(challenger, opponent)
+                        
                         await ticket_ch.send(
                             f"⚫ 先攻：{challenger.mention}\n⚪ 後攻：{opponent.mention}\n先攻の番です！",
                             view=game_view
@@ -201,7 +203,7 @@ class OthelloPanelView(discord.ui.View):
 
     # ==== パネル編集ボタン ====
     @discord.ui.button(label="✏️ パネル編集", style=discord.ButtonStyle.secondary, custom_id="othello_panel:edit")
-    async def edit_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
+    async def edit_btn(self, itx: discord.Interaction, btn):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
             return
