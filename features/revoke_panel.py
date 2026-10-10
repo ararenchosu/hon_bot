@@ -134,7 +134,7 @@ async def setup(tree):
             return
         embed = discord.Embed(
             title="🗑️ ロール剥奪",
-            description="下のボタンを押して、不要になったロールを選択して外すことができます。",
+            description="⬇️のボタンを押して、不要になったロールを選択して外すことができます。\n誤ったロールを外した際ロール付与で付け直すことができます。",
             color=0xe74c3c
         )
         await itx.response.send_message(embed=embed, view=RoleRevokePanelView())
