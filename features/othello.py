@@ -1,5 +1,5 @@
 import discord
-from discord.ext import commands
+from discord import app_commands  # ← この行を追加
 from .othello_board import OthelloBoard
 from .othello_view import OthelloView
 
