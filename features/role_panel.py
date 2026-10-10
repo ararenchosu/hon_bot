@@ -158,7 +158,7 @@ async def setup(tree):
             return
         embed = discord.Embed(
             title="🎖️ ロール選択",
-            description="下のボタンを押して、必要なロールを選択して取得してください。",
+            description="⬇️のボタンを押して、必要なロールを選択して取得してください。\n誤ったロールを付けた際はロール剥奪でロールを外すことができます。",
             color=0x3498db
         )
         await itx.response.send_message(embed=embed, view=RoleSelectPanelView())
