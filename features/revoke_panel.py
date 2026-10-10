@@ -1,6 +1,8 @@
 import discord
+from discord import app_commands
 from core.common import is_owner
 from core.database import get_connection
+
 
 def get_selectable_roles(guild_id):
     conn = get_connection()
@@ -10,12 +12,13 @@ def get_selectable_roles(guild_id):
     conn.close()
     return result
 
+
 class RoleRevokePanelView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
     @discord.ui.button(label="🗑️ ロールを選択して外す", style=discord.ButtonStyle.danger, custom_id="revoke:remove")
-    async def remove_role(self, itx, btn):
+    async def remove_role(self, itx: discord.Interaction, btn: discord.ui.Button):
         selectable_roles = get_selectable_roles(itx.guild_id)
         if not selectable_roles:
             await itx.response.send_message(
@@ -39,7 +42,8 @@ class RoleRevokePanelView(discord.ui.View):
                     max_values=len(removable),
                     options=[discord.SelectOption(label=name, value=rid) for rid, name in removable]
                 ))
-            async def interaction_check(self, inter):
+
+            async def interaction_check(self, inter: discord.Interaction) -> bool:
                 selected = self.children[0].values
                 removed = []
                 for rid in selected:
@@ -62,23 +66,27 @@ class RoleRevokePanelView(discord.ui.View):
         )
 
     @discord.ui.button(label="✏️ パネル編集", style=discord.ButtonStyle.secondary, custom_id="revoke:edit")
-    async def edit_panel(self, itx, btn):
+    async def edit_panel(self, itx: discord.Interaction, btn: discord.ui.Button):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
             return
+
         class EditModal(discord.ui.Modal, title="ロール剥奪パネル編集"):
             title_in = discord.ui.TextInput(label="タイトル", default="🗑️ ロール剥奪")
             desc_in = discord.ui.TextInput(
                 label="説明", style=discord.TextStyle.long,
                 default="ボタンから不要なロールを選択して外すことができます。"
             )
-            async def on_submit(self, inter):
+
+            async def on_submit(self, inter: discord.Interaction):
                 embed = discord.Embed(
                     title=str(self.title_in), description=str(self.desc_in), color=0xe74c3c
                 )
-                await inter.response.edit_message(embed=embed)
+                await inter.response.edit_message(embed=embed, view=RoleRevokePanelView())
                 await inter.followup.send("✅ 更新しました", ephemeral=True)
+
         await itx.response.send_modal(EditModal())
+
 
 async def setup(tree):
     @tree.command(name="ロール剥奪パネル設置", description="ロール剥奪パネル設置（オーナー専用）")
