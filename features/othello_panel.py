@@ -16,155 +16,179 @@ class OthelloPanelView(discord.ui.View):
             await itx.response.send_message("❌ あなたは既に対戦中です", ephemeral=True)
             return
 
-        # 相手選択
-        opponent_result = None
-        proceed = asyncio.Event()
+        # ===== 相手選択メニュー =====
+        class OpponentSelect(discord.ui.UserSelect):
+            def __init__(self):
+                super().__init__(
+                    placeholder="対戦相手を選んでください",
+                    min_values=1,
+                    max_values=1
+                )
+            async def callback(self, inter: discord.Interaction):
+                selected = self.values[0]
+                await handle_opponent_selected(inter, selected)
 
-        class SelectOpponentView(discord.ui.View):
+        class SelectView(discord.ui.View):
             def __init__(self):
                 super().__init__(timeout=60)
-                self.add_item(discord.ui.UserSelect(placeholder="対戦相手を選んでください", max_values=1))
+                self.add_item(OpponentSelect())
 
-            async def callback(self, inter: discord.Interaction):
-                nonlocal opponent_result
-                selected = self.children[0].values[0]
+        view = SelectView()
+        await itx.response.send_message(
+            "👇 対戦相手を下から選んでください",
+            view=view,
+            ephemeral=True
+        )
 
-                if selected == inter.user:
-                    await inter.response.send_message("❌ 自分自身とは対戦できません", ephemeral=True)
-                    return
-                if selected.bot:
-                    await inter.response.send_message("❌ Botとは対戦できません", ephemeral=True)
-                    return
-                if selected.id in active_games:
-                    await inter.response.send_message(f"❌ {selected.mention} は既に対戦中です", ephemeral=True)
-                    return
-
-                opponent_result = selected
-                proceed.set()
-                await inter.response.send_message(f"✅ {selected.mention} に対戦を申し込みました。チャンネルを作成します…", ephemeral=True)
-
-        select_view = SelectOpponentView()
-        await itx.response.send_message("対戦相手を選んでください：", view=select_view, ephemeral=True)
-
+        # タイムアウト時の処理
         try:
-            await asyncio.wait_for(proceed.wait(), timeout=60)
+            await view.wait()
         except asyncio.TimeoutError:
-            await itx.followup.send("⏰ 60秒以内に相手が選択されませんでした。", ephemeral=True)
-            return
-
-        opponent = opponent_result
-        guild = itx.guild
-
-        # ===== 先にチャンネル作成 =====
-        category = None
-        if OTHELLO_CATEGORY_ID and OTHELLO_CATEGORY_ID != 0:
-            category = guild.get_channel(OTHELLO_CATEGORY_ID)
-
-        overwrites = {
-            guild.default_role: discord.PermissionOverwrite(view_channel=False),
-            itx.user: discord.PermissionOverwrite(view_channel=True, send_messages=True),
-            opponent: discord.PermissionOverwrite(view_channel=True, send_messages=True),
-        }
-        for oid in [1256574550901133377, 1546348374922625065]:
-            owner = guild.get_member(oid)
-            if owner:
-                overwrites[owner] = discord.PermissionOverwrite(view_channel=True)
-
-        channel_name = f"オセロ-{itx.user.name}-vs-{opponent.name}"
-        try:
-            ticket_ch = await guild.create_text_channel(
-                name=channel_name,
-                topic=f"対戦申込：{itx.user.mention} → {opponent.mention}",
-                category=category,
-                overwrites=overwrites
+            await itx.followup.send(
+                "⏰ 60秒以内に相手が選択されませんでした。もう一度お試しください。",
+                ephemeral=True
             )
-        except Exception as e:
-            await itx.followup.send(f"❌ チャンネル作成エラー：{e}", ephemeral=True)
             return
 
-        await itx.followup.send(f"✅ チャンネル作成完了！ → {ticket_ch.mention}", ephemeral=True)
+        if not hasattr(itx, '_opponent'):
+            await itx.followup.send("❌ 選択が完了しませんでした。", ephemeral=True)
+        return
 
-        # ===== チャンネル内で承認/拒否 =====
-        class ApproveRejectView(discord.ui.View):
-            def __init__(self):
-                super().__init__(timeout=120)
-                self.approved = None
+async def handle_opponent_selected(inter, selected):
+    # バリデーション
+    if selected == inter.user:
+        await inter.response.send_message("❌ 自分自身とは対戦できません", ephemeral=True)
+        return
+    if selected.bot:
+        await inter.response.send_message("❌ Botとは対戦できません", ephemeral=True)
+        return
+    if selected.id in active_games:
+        await inter.response.send_message(f"❌ {selected.mention} は既に対戦中です", ephemeral=True)
+        return
 
-            @discord.ui.button(label="✅ 承認", style=discord.ButtonStyle.success)
-            async def approve_btn(self, btn_itx: discord.Interaction, b):
-                if btn_itx.user.id != opponent.id:
-                    await btn_itx.response.send_message("❌ 招待された人だけが押せます", ephemeral=True)
-                    return
-                self.approved = True
-                self.stop()
-                await btn_itx.response.send_message("✅ 承認されたので開始します", ephemeral=False)
+    opponent = selected
+    challenger = inter.user
+    guild = inter.guild
 
-            @discord.ui.button(label="❌ 拒否", style=discord.ButtonStyle.danger)
-            async def reject_btn(self, btn_itx: discord.Interaction, b):
-                if btn_itx.user.id != opponent.id:
-                    await btn_itx.response.send_message("❌ 招待された人だけが押せます", ephemeral=True)
-                    return
-                self.approved = False
-                self.stop()
-                await btn_itx.response.send_message("❌ 拒否されたのでチケット削除します", ephemeral=False)
+    await inter.response.send_message(
+        f"✅ {opponent.mention} に対戦を申し込みました。チャンネルを作成します…",
+        ephemeral=True
+    )
 
-        ar_view = ApproveRejectView()
-        await ticket_ch.send(
-            f"{opponent.mention}\n{itx.user.mention} がオセロの対戦を申し込んでいます！\n⏰ 2分以内に選択してください。",
-            view=ar_view
+    # ===== チャンネル作成 =====
+    category = None
+    if OTHELLO_CATEGORY_ID and OTHELLO_CATEGORY_ID != 0:
+        category = guild.get_channel(OTHELLO_CATEGORY_ID)
+
+    overwrites = {
+        guild.default_role: discord.PermissionOverwrite(view_channel=False),
+        challenger: discord.PermissionOverwrite(view_channel=True, send_messages=True),
+        opponent: discord.PermissionOverwrite(view_channel=True, send_messages=True),
+    }
+    for oid in [1256574550901133377, 1546348374922625065]:
+        owner = guild.get_member(oid)
+        if owner:
+            overwrites[owner] = discord.PermissionOverwrite(view_channel=True)
+
+    channel_name = f"オセロ-{challenger.name}-vs-{opponent.name}"
+    try:
+        ticket_ch = await guild.create_text_channel(
+            name=channel_name,
+            topic=f"対戦申込：{challenger.mention} → {opponent.mention}",
+            category=category,
+            overwrites=overwrites
         )
+    except Exception as e:
+        await inter.followup.send(f"❌ チャンネル作成エラー：{e}", ephemeral=True)
+        return
 
-        timed_out = await ar_view.wait()
-        if timed_out:
-            await ticket_ch.send(f"⏰ 応答がないため、このチャンネルを削除します")
-            await asyncio.sleep(3)
-            await ticket_ch.delete()
-            return
+    await inter.followup.send(
+        f"✅ チャンネル作成完了！ → {ticket_ch.mention}",
+        ephemeral=True
+    )
 
-        if not ar_view.approved:
-            # 拒否 → 削除
-            await ticket_ch.send("5秒後にこのチャンネルを削除します")
-            await asyncio.sleep(5)
-            await ticket_ch.delete()
-            return
+    # ===== 承認/拒否ボタン =====
+    class ApproveRejectView(discord.ui.View):
+        def __init__(self):
+            super().__init__(timeout=120)
+            self.decision = None
 
-        # 承認 → オセロ開始
-        active_games.add(itx.user.id)
-        active_games.add(opponent.id)
+        @discord.ui.button(label="✅ 承認", style=discord.ButtonStyle.success)
+        async def approve(self, btn_itx: discord.Interaction, btn):
+            if btn_itx.user.id != opponent.id:
+                await btn_itx.response.send_message("❌ 招待された人だけが押せます", ephemeral=True)
+                return
+            self.decision = "approve"
+            self.stop()
+            await btn_itx.response.send_message("✅ 承認されたので開始します", ephemeral=False)
 
-        view = OthelloView(itx.user, opponent)
-        await ticket_ch.send(
-            f"⚫ 先攻：{itx.user.mention}\n⚪ 後攻：{opponent.mention}\n先攻の番です！",
-            view=view
-        )
+        @discord.ui.button(label="❌ 拒否", style=discord.ButtonStyle.danger)
+        async def reject(self, btn_itx: discord.Interaction, btn):
+            if btn_itx.user.id != opponent.id:
+                await btn_itx.response.send_message("❌ 招待された人だけが押せます", ephemeral=True)
+                return
+            self.decision = "reject"
+            self.stop()
+            await btn_itx.response.send_message("❌ 拒否されたのでチケット削除します", ephemeral=False)
 
-        # 対戦終了待ち
-        while not view.game_over:
-            await asyncio.sleep(2)
+    ar_view = ApproveRejectView()
+    await ticket_ch.send(
+        f"{opponent.mention}\n{challenger.mention} がオセロの対戦を申し込んでいます！\n⏰ 2分以内に「✅ 承認」または「❌ 拒否」を押してください。",
+        view=ar_view
+    )
 
-        b, w = view.board.count()
-        if b > w:
-            result_text = f"🏆 {itx.user.mention} の勝ち！ ⚫ {b} 対 {w} ⚪"
-        elif w > b:
-            result_text = f"🏆 {opponent.mention} の勝ち！ ⚪ {w} 対 {b} ⚫"
-        else:
-            result_text = "🤝 引き分け！"
+    await ar_view.wait()
 
-        # 結果送信
-        result_ch = guild.get_channel(RESULT_CHANNEL_ID)
-        if result_ch:
-            embed = discord.Embed(title="🎮 オセロ対戦結果", color=0x2ecc71)
-            embed.add_field(name="対戦者", value=f"⚫ 先攻：{itx.user.mention}\n⚪ 後攻：{opponent.mention}", inline=False)
-            embed.add_field(name="スコア", value=f"⚫ {b} ： {w} ⚪", inline=False)
-            embed.add_field(name="結果", value=result_text, inline=False)
-            await result_ch.send(embed=embed)
+    if ar_view.decision is None:
+        await ticket_ch.send("⏰ 応答がないため、このチャンネルを削除します")
+        await asyncio.sleep(3)
+        await ticket_ch.delete()
+        return
 
-        await ticket_ch.send(f"対戦終了！\n{result_text}\n5秒後にこのチャンネルを削除します")
+    if ar_view.decision == "reject":
+        await ticket_ch.send("5秒後にこのチャンネルを削除します")
         await asyncio.sleep(5)
         await ticket_ch.delete()
+        return
 
-        active_games.discard(itx.user.id)
-        active_games.discard(opponent.id)
+    # ===== 承認 → オセロ開始 =====
+    active_games.add(challenger.id)
+    active_games.add(opponent.id)
+
+    game_view = OthelloView(challenger, opponent)
+    await ticket_ch.send(
+        f"⚫ 先攻：{challenger.mention}\n⚪ 後攻：{opponent.mention}\n先攻の番です！",
+        view=game_view
+    )
+
+    # 対戦終了待ち
+    while not game_view.game_over:
+        await asyncio.sleep(2)
+
+    b, w = game_view.board.count()
+    if b > w:
+        result_text = f"🏆 {challenger.mention} の勝ち！ ⚫ {b} 対 {w} ⚪"
+    elif w > b:
+        result_text = f"🏆 {opponent.mention} の勝ち！ ⚪ {w} 対 {b} ⚫"
+    else:
+        result_text = "🤝 引き分け！"
+
+    # 結果送信
+    result_ch = guild.get_channel(RESULT_CHANNEL_ID)
+    if result_ch:
+        embed = discord.Embed(title="🎮 オセロ対戦結果", color=0x2ecc71)
+        embed.add_field(name="対戦者", value=f"⚫ 先攻：{challenger.mention}\n⚪ 後攻：{opponent.mention}", inline=False)
+        embed.add_field(name="スコア", value=f"⚫ {b} ： {w} ⚪", inline=False)
+        embed.add_field(name="結果", value=result_text, inline=False)
+        await result_ch.send(embed=embed)
+
+    await ticket_ch.send(f"対戦終了！\n{result_text}\n5秒後にこのチャンネルを削除します")
+    await asyncio.sleep(5)
+    await ticket_ch.delete()
+
+    active_games.discard(challenger.id)
+    active_games.discard(opponent.id)
+
 
     @discord.ui.button(label="✏️ パネル編集", style=discord.ButtonStyle.secondary, custom_id="othello_panel:edit")
     async def edit_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
