@@ -51,11 +51,12 @@ class RowSelectView(discord.ui.View):
             await interaction.response.send_message("❌ そこには置けません", ephemeral=True)
             return
 
+        # パス処理
         next_color = WHITE if self.parent.board.current == BLACK else BLACK
         if not self.parent.board.can_put(next_color) and not self.parent.board.is_game_over():
             self.parent.board.current = next_color
 
-        embed = await self.parent.build_embed()
+        new_embed = await self.parent.build_embed()
 
         if self.parent.board.is_game_over():
             b, w = self.parent.board.count()
@@ -66,9 +67,10 @@ class RowSelectView(discord.ui.View):
             else:
                 result = "🤝 引き分け！"
 
-            embed.set_field_at(0, name="🏆 対戦結果", value=f"黒：{b}　白：{w}\n{result}", inline=False)
+            new_embed.set_field_at(0, name="🏆 対戦結果", value=f"黒：{b}　白：{w}\n{result}", inline=False)
             self.parent.disable_all_items()
 
+            # 結果を専用チャンネルに送信
             if self.parent.result_channel_id and self.parent.ticket_channel:
                 guild = self.parent.ticket_channel.guild
                 result_ch = guild.get_channel(self.parent.result_channel_id)
@@ -79,9 +81,10 @@ class RowSelectView(discord.ui.View):
                     res_embed.add_field(name="結果", value=result, inline=False)
                     await result_ch.send(embed=res_embed)
 
-            # ✅ 元の盤面メッセージを直接更新
-            await interaction.response.edit_message(embed=embed, view=self.parent)
+            # ✅ 元の盤面メッセージを直接書き換え
+            await interaction.response.edit_message(embed=new_embed, view=self.parent)
 
+            # チャンネル削除
             if self.parent.ticket_channel:
                 await self.parent.ticket_channel.send("✅ 対戦終了！5秒後にこのチャンネルを削除します")
                 import asyncio
@@ -91,8 +94,8 @@ class RowSelectView(discord.ui.View):
                 except:
                     pass
         else:
-            # ✅ 元の盤面メッセージを直接更新 → 個別メッセージは削除
-            await interaction.response.edit_message(embed=embed, view=self.parent)
+            # ✅ 通常の手 → 元の盤面メッセージを直接書き換え
+            await interaction.response.edit_message(embed=new_embed, view=self.parent)
 
 
 class OthelloView(discord.ui.View):
@@ -102,7 +105,7 @@ class OthelloView(discord.ui.View):
         self.player_black = player_black
         self.player_white = player_white
         self.board = game.board
-        self.message = None
+        self.main_message = None  # 盤面のメインメッセージを保持
         self.result_channel_id = result_channel_id
         self.ticket_channel = ticket_channel
         self.force_ended = False
@@ -190,6 +193,7 @@ class OthelloView(discord.ui.View):
         embed.add_field(name="途中終了 状況", value=f"黒：{b}　白：{w}\n{result_text}", inline=False)
         embed.add_field(name="プレイヤー", value=f"{self.player_black.mention} 黒\n{self.player_white.mention} 白", inline=False)
 
+        # ✅ メインメッセージを直接更新
         await interaction.response.edit_message(embed=embed, view=self)
 
         if self.ticket_channel:
@@ -223,7 +227,7 @@ class OthelloView(discord.ui.View):
             return
 
         view = RowSelectView(self, col)
-        # ✅ ephemeral な行選択表示 → 押したら元のメッセージに統合
+        # 👇 これだけが一時的に自分だけに表示される → 選択後は消える
         await interaction.response.send_message(
             "👇 行番号を選んでください：",
             view=view,
