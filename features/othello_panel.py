@@ -1,6 +1,6 @@
 import discord
 from discord import app_commands
-from core.common import is_owner, RESULT_CHANNEL_ID
+from core.common import is_owner, RESULT_CHANNEL_ID, OTHELLO_CATEGORY_ID
 import asyncio
 from .othello_view import OthelloView
 
@@ -39,7 +39,7 @@ class OthelloPanelView(discord.ui.View):
 
                 class RequestView(discord.ui.View):
                     def __init__(self):
-                        super().__init__(timeout=120)
+                        super().__init__(timeout=120)  # 2分
                         self.accepted = None
 
                     @discord.ui.button(label="✅ 承諾", style=discord.ButtonStyle.success)
@@ -49,7 +49,7 @@ class OthelloPanelView(discord.ui.View):
                             return
                         self.accepted = True
                         self.stop()
-                        await btn_itx.response.send_message(f"✅ {inter.user.mention} の対戦を承諾しました！", ephemeral=True)
+                        await btn_itx.response.send_message(f"✅ 対戦を承諾しました！チャンネルを作成します…", ephemeral=True)
 
                     @discord.ui.button(label="❌ 拒否", style=discord.ButtonStyle.danger)
                     async def reject(self, btn_itx: discord.Interaction, b):
@@ -58,23 +58,29 @@ class OthelloPanelView(discord.ui.View):
                             return
                         self.accepted = False
                         self.stop()
-                        await btn_itx.response.send_message(f"❌ {inter.user.mention} の対戦を拒否しました", ephemeral=True)
+                        await btn_itx.response.send_message(f"❌ 対戦を拒否しました", ephemeral=True)
 
                 req_view = RequestView()
                 await inter.response.send_message(
-                    f"{opponent.mention}\n{inter.user.mention} がオセロの対戦を申し込んでいます！\n2分以内に承諾/拒否を選んでください",
+                    f"{opponent.mention}\n{inter.user.mention} がオセロの対戦を申し込んでいます！\n⏰ 2分以内に「✅ 承諾」または「❌ 拒否」を押してください。",
                     view=req_view
                 )
 
                 timed_out = await req_view.wait()
                 if timed_out:
-                    await inter.followup.send(f"⏰ {opponent.mention} から返答がありませんでした", ephemeral=True)
+                    await inter.followup.send(
+                        f"⏰ {opponent.mention} から応答がありませんでした。\n相手に「対戦の申し込みが届いてる？」と確認してみてください。",
+                        ephemeral=True
+                    )
                     return
                 if not req_view.accepted:
                     await inter.followup.send(f"❌ {opponent.mention} が対戦を拒否しました", ephemeral=True)
                     return
 
                 guild = inter.guild
+                # カテゴリを取得
+                category = guild.get_channel(OTHELLO_CATEGORY_ID) if OTHELLO_CATEGORY_ID else None
+                
                 overwrites = {
                     guild.default_role: discord.PermissionOverwrite(view_channel=False),
                     inter.user: discord.PermissionOverwrite(view_channel=True, send_messages=True),
@@ -89,6 +95,7 @@ class OthelloPanelView(discord.ui.View):
                 ticket_ch = await guild.create_text_channel(
                     name=channel_name,
                     topic=f"対戦：{inter.user.mention} VS {opponent.mention}",
+                    category=category,  # ← カテゴリ指定
                     overwrites=overwrites
                 )
 
