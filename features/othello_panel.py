@@ -162,7 +162,7 @@ class OthelloPanelView(discord.ui.View):
 
 
 async def setup(tree):
-    @tree.command(name="オセロパネル設置", description="オセロ対戦パネルを設置（オーナー専用）")
+    @tree.command(name="/オセロパネル設置", description="/オセロ対戦パネルを設置（オーナー専用）")
     async def cmd_othello_panel(itx: discord.Interaction):
         if itx.user.id != OWNER_ID:
             await itx.response.send_message("❌ オーナー専用コマンドです", ephemeral=True)
