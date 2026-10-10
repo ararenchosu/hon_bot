@@ -3,6 +3,7 @@ from discord import app_commands
 from core.common import is_owner, RESULT_CHANNEL_ID, OTHELLO_CATEGORY_ID
 import asyncio
 from .othello_view import OthelloView
+from .othello_board import OthelloBoard
 
 active_games = set()
 
@@ -116,34 +117,35 @@ class OthelloPanelView(discord.ui.View):
                     return
                 self.final_decision = "approve"
                 self.stop()
-                await btn_itx.response.send_message(
-                    "✅ 承認されました。⬇️の盤面表示ボタンを押して開始しましょう",
-                    ephemeral=False
-                )
 
-                # ===== 盤面表示ボタン =====
+                # ===== 盤面表示ボタンを同じメッセージにまとめる =====
                 class StartBoardView(discord.ui.View):
                     def __init__(self):
                         super().__init__(timeout=None)
 
                     @discord.ui.button(label="🎮 盤面表示", style=discord.ButtonStyle.primary)
                     async def show_board_btn(self, board_itx: discord.Interaction, btn):
-                        # 処理中と応答してタイムアウト回避
                         await board_itx.response.defer()
                         
                         active_games.add(challenger.id)
                         active_games.add(opponent.id)
                         
-                        # ✅ 修正：引数を3つ渡す（challenger=黒, opponent=白）
-                        game_view = OthelloView(challenger, opponent)
+                        # 正しい引数順：game, player_black, player_white
+                        game = type('Game', (), {'board': OthelloBoard()})()
+                        game_view = OthelloView(
+                            game=game,
+                            player_black=challenger,
+                            player_white=opponent
+                        )
                         
+                        embed = await game_view.build_embed()
                         await ticket_ch.send(
-                            f"⚫ 先攻：{challenger.mention}\n⚪ 後攻：{opponent.mention}\n先攻の番です！",
+                            embed=embed,
                             view=game_view
                         )
 
                         # 対戦終了待ち
-                        while not game_view.game_over:
+                        while not game_view.board.is_game_over():
                             await asyncio.sleep(2)
 
                         b, w = game_view.board.count()
@@ -157,11 +159,11 @@ class OthelloPanelView(discord.ui.View):
                         # 結果送信
                         result_ch = guild.get_channel(RESULT_CHANNEL_ID)
                         if result_ch:
-                            embed = discord.Embed(title="🎮 オセロ対戦結果", color=0x2ecc71)
-                            embed.add_field(name="対戦者", value=f"⚫ 先攻：{challenger.mention}\n⚪ 後攻：{opponent.mention}", inline=False)
-                            embed.add_field(name="スコア", value=f"⚫ {b} ： {w} ⚪", inline=False)
-                            embed.add_field(name="結果", value=result_text, inline=False)
-                            await result_ch.send(embed=embed)
+                            result_embed = discord.Embed(title="🎮 オセロ対戦結果", color=0x2ecc71)
+                            result_embed.add_field(name="対戦者", value=f"⚫ 先攻：{challenger.mention}\n⚪ 後攻：{opponent.mention}", inline=False)
+                            result_embed.add_field(name="スコア", value=f"⚫ {b} ： {w} ⚪", inline=False)
+                            result_embed.add_field(name="結果", value=result_text, inline=False)
+                            await result_ch.send(embed=result_embed)
 
                         await ticket_ch.send(f"対戦終了！\n{result_text}\n5秒後にこのチャンネルを削除します")
                         await asyncio.sleep(5)
@@ -170,9 +172,11 @@ class OthelloPanelView(discord.ui.View):
                         active_games.discard(challenger.id)
                         active_games.discard(opponent.id)
 
-                await ticket_ch.send(
-                    "🎮 下のボタンを押してオセロを開始してください",
-                    view=StartBoardView()
+                # ✅ 修正：メッセージとボタンを一緒に表示
+                await btn_itx.response.send_message(
+                    "✅ 承認されました。⬇️の盤面表示ボタンを押して開始しましょう",
+                    view=StartBoardView(),
+                    ephemeral=False
                 )
 
             @discord.ui.button(label="❌ 拒否", style=discord.ButtonStyle.danger)
@@ -228,8 +232,8 @@ async def setup(tree):
             await itx.response.send_message("❌ オーナー専用コマンドです", ephemeral=True)
             return
         embed = discord.Embed(
-            title="🎮 オセロで対戦しよう！",
+            title="🔳 オセロで対戦しよう！",
             description="下のボタンを押して対戦相手を選んでください。\n承諾されると専用チャンネルが自動作成されます。",
-            color=0x2ecc71
+            color=0x222222
         )
         await itx.response.send_message(embed=embed, view=OthelloPanelView())
