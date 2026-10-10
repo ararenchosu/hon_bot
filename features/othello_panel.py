@@ -39,7 +39,7 @@ class OthelloPanelView(discord.ui.View):
 
                 class RequestView(discord.ui.View):
                     def __init__(self):
-                        super().__init__(timeout=120)  # 2分
+                        super().__init__(timeout=120)
                         self.accepted = None
 
                     @discord.ui.button(label="✅ 承諾", style=discord.ButtonStyle.success)
@@ -49,7 +49,7 @@ class OthelloPanelView(discord.ui.View):
                             return
                         self.accepted = True
                         self.stop()
-                        await btn_itx.response.send_message(f"✅ 対戦を承諾しました！チャンネルを作成します…", ephemeral=True)
+                        await btn_itx.response.send_message("✅ 承諾されました！チャンネルを作成中…", ephemeral=True)
 
                     @discord.ui.button(label="❌ 拒否", style=discord.ButtonStyle.danger)
                     async def reject(self, btn_itx: discord.Interaction, b):
@@ -58,7 +58,7 @@ class OthelloPanelView(discord.ui.View):
                             return
                         self.accepted = False
                         self.stop()
-                        await btn_itx.response.send_message(f"❌ 対戦を拒否しました", ephemeral=True)
+                        await btn_itx.response.send_message("❌ 対戦を拒否しました", ephemeral=True)
 
                 req_view = RequestView()
                 await inter.response.send_message(
@@ -69,7 +69,7 @@ class OthelloPanelView(discord.ui.View):
                 timed_out = await req_view.wait()
                 if timed_out:
                     await inter.followup.send(
-                        f"⏰ {opponent.mention} から応答がありませんでした。\n相手に「対戦の申し込みが届いてる？」と確認してみてください。",
+                        f"⏰ {opponent.mention} から応答がありませんでした。\n相手に確認してみてください。",
                         ephemeral=True
                     )
                     return
@@ -77,10 +77,14 @@ class OthelloPanelView(discord.ui.View):
                     await inter.followup.send(f"❌ {opponent.mention} が対戦を拒否しました", ephemeral=True)
                     return
 
+                # --- ここからチャンネル作成 ---
                 guild = inter.guild
-                # カテゴリを取得
-                category = guild.get_channel(OTHELLO_CATEGORY_ID) if OTHELLO_CATEGORY_ID else None
-                
+                category = None
+                if OTHELLO_CATEGORY_ID and OTHELLO_CATEGORY_ID != 0:
+                    category = guild.get_channel(OTHELLO_CATEGORY_ID)
+                    if not category:
+                        await inter.followup.send("⚠️ カテゴリが見つかりません。トップレベルに作成します。", ephemeral=True)
+
                 overwrites = {
                     guild.default_role: discord.PermissionOverwrite(view_channel=False),
                     inter.user: discord.PermissionOverwrite(view_channel=True, send_messages=True),
@@ -91,13 +95,17 @@ class OthelloPanelView(discord.ui.View):
                     if owner:
                         overwrites[owner] = discord.PermissionOverwrite(view_channel=True)
 
-                channel_name = f"オセロ-{inter.user.name}_vs_{opponent.name}"
-                ticket_ch = await guild.create_text_channel(
-                    name=channel_name,
-                    topic=f"対戦：{inter.user.mention} VS {opponent.mention}",
-                    category=category,  # ← カテゴリ指定
-                    overwrites=overwrites
-                )
+                channel_name = f"オセロ-{inter.user.name}-vs-{opponent.name}"
+                try:
+                    ticket_ch = await guild.create_text_channel(
+                        name=channel_name,
+                        topic=f"対戦：{inter.user.mention} VS {opponent.mention}",
+                        category=category,
+                        overwrites=overwrites
+                    )
+                except Exception as e:
+                    await inter.followup.send(f"❌ チャンネル作成エラー：{e}", ephemeral=True)
+                    return
 
                 active_games.add(inter.user.id)
                 active_games.add(opponent.id)
@@ -108,7 +116,7 @@ class OthelloPanelView(discord.ui.View):
                     view=view
                 )
 
-                await inter.followup.send(f"✅ 対戦が成立！ {ticket_ch.mention} に進んでください", ephemeral=True)
+                await inter.followup.send(f"✅ チャンネル作成完了！ → {ticket_ch.mention}", ephemeral=True)
 
                 while not view.game_over:
                     await asyncio.sleep(2)
