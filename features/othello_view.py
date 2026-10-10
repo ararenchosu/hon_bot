@@ -11,9 +11,19 @@ class OthelloView(discord.ui.View):
 
     async def build_embed(self):
         b, w = self.board.count()
-        turn = "⚫ 黒の番です" if self.board.current == BLACK else "⚪ 白の番です"
+        
+        # 現在の番のユーザーを取得
+        current_player = self.player_black if self.board.current == BLACK else self.player_white
+        
+        # メッセージを動的に生成
+        turn_text = ""
+        if current_player.id == self.player_black.id:
+            turn_text = f"自分の番です"
+        else:
+            turn_text = f"相手の番です"
+        
         embed = discord.Embed(title="🔳 オセロ", description=self.board.render(), color=0x222222)
-        embed.add_field(name="状況", value=f"黒：{b}　白：{w}\n{turn}", inline=False)
+        embed.add_field(name="状況", value=f"黒：{b}　白：{w}\n{turn_text}", inline=False)
         return embed
 
     def check_turn(self, interaction):
