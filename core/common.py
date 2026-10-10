@@ -1,25 +1,14 @@
-from datetime import datetime, timedelta, timezone
-import discord
-
 # ========== サーバー固有設定 ==========
-OWNER_ID = 1256574550901133377
-CALL_CHANNEL_ID = 1558080580112089198
-WELCOME_LEAVE_CHANNEL_ID = 1542788842078216297
+# オーナーを複数設定可能
+OWNER_IDS = [
+    1256574550901133377,   # メインオーナー
+    1546348374922625065,   # 追加オーナー
+]
 
-# ========== 共通定数 ==========
-JST = timezone(timedelta(hours=9))
+CALL_CHANNEL_ID = 1558080580112089198          # 呼び出し通知用
+WELCOME_LEAVE_CHANNEL_ID = 1542788842078216297 # 入退出通知用
 
-# ========== 共通関数 ==========
-def is_owner(itx):
-    return itx.user.id == OWNER_ID
-
-def format_account_age(dt):
-    now = datetime.now(JST)
-    delta = now - dt
-    days = delta.days
-    if days < 30:
-        return f"{days}日"
-    months = days // 30
-    if months < 12:
-        return f"{months}ヶ月"
-    return f"{months // 12}年"
+# ========== 共通判定関数 ==========
+def is_owner(interaction):
+    """実行者がオーナーか判定"""
+    return interaction.user.id in OWNER_IDS
