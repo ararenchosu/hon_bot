@@ -40,7 +40,50 @@ def init_db():
         value INTEGER
     )""")
     cur.execute("INSERT OR IGNORE INTO stats VALUES ('member_total', 0)")
-    
+
+    # ========== 👇 パネル保存用 新規追加 ==========
+    # 呼び出しパネル
+    cur.execute("""CREATE TABLE IF NOT EXISTS call_panel (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        channel_id TEXT NOT NULL,
+        message_id TEXT NOT NULL UNIQUE,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        color INTEGER NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""")
+    # 認証パネル
+    cur.execute("""CREATE TABLE IF NOT EXISTS auth_panel (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        channel_id TEXT NOT NULL,
+        message_id TEXT NOT NULL UNIQUE,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        color INTEGER NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""")
+    # ロール付与パネル
+    cur.execute("""CREATE TABLE IF NOT EXISTS role_give_panel (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        channel_id TEXT NOT NULL,
+        message_id TEXT NOT NULL UNIQUE,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        color INTEGER NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""")
+    # ロール剥奪パネル
+    cur.execute("""CREATE TABLE IF NOT EXISTS role_revoke_panel (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        channel_id TEXT NOT NULL,
+        message_id TEXT NOT NULL UNIQUE,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        color INTEGER NOT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )""")
+    # ===========================================
+
     conn.commit()
     conn.close()
     print("✅ データベース準備完了（永続保存）")
