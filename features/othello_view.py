@@ -12,8 +12,8 @@ class OthelloView(discord.ui.View):
         self.player_white = player_white
         self.board = game.board
         self.message = None
-        self.result_channel_id = result_channel_id   # 結果送信用
-        self.ticket_channel = ticket_channel           # チケット削除用
+        self.result_channel_id = result_channel_id
+        self.ticket_channel = ticket_channel
         self.force_ended = False
 
     async def build_embed(self):
@@ -58,7 +58,7 @@ class OthelloView(discord.ui.View):
     async def col_e(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.handle_move(interaction, 4)
 
-    # ===== 2行目：f～h ＋ 強制終了 =====
+    # ===== 2行目：f～h + 強制終了 =====
     @discord.ui.button(label="ｆ", style=discord.ButtonStyle.secondary, row=1)
     async def col_f(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.handle_move(interaction, 5)
@@ -68,21 +68,19 @@ class OthelloView(discord.ui.View):
     @discord.ui.button(label="ｈ", style=discord.ButtonStyle.secondary, row=1)
     async def col_h(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.handle_move(interaction, 7)
-    
-    # ✅ 強制終了ボタン
+
     @discord.ui.button(label="⚠️ 強制終了", style=discord.ButtonStyle.danger, row=1)
     async def force_end_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         if self.force_ended:
             await interaction.response.send_message("❌ 既に終了しています", ephemeral=True)
             return
-        # どちらのプレイヤーでも押せる
         if interaction.user.id not in (self.player_black.id, self.player_white.id):
             await interaction.response.send_message("❌ 対戦者のみ実行できます", ephemeral=True)
             return
-        
+
         self.force_ended = True
         self.disable_all_items()
-        
+
         b, w = self.board.count()
         if b > w:
             result_text = f"⚫ {self.player_black.mention} の勝ち！"
@@ -90,19 +88,16 @@ class OthelloView(discord.ui.View):
             result_text = f"⚪ {self.player_white.mention} の勝ち！"
         else:
             result_text = "🤝 引き分け！"
-        
-        # 結果を表示
+
         embed = discord.Embed(title="🔳 オセロ【強制終了】", description=self.board.render(), color=0xff4444)
         embed.add_field(name="途中終了 状況", value=f"黒：{b}　白：{w}\n{result_text}", inline=False)
         embed.add_field(name="プレイヤー", value=f"{self.player_black.mention} 黒\n{self.player_white.mention} 白", inline=False)
-        
+
         await interaction.response.edit_message(embed=embed, view=self)
-        
-        # チケットチャンネルに通知
+
         if self.ticket_channel:
-            await self.ticket_channel.send(f"⚠️ {interaction.user.mention} により対戦が強制終了されました。\n5秒後にこのチャンネルを削除します…")
-        
-        # 結果を専用チャンネルに送信
+            await self.ticket_channel.send(f"⚠️ {interaction.user.mention} により対戦が強制終了されました。\n3秒後にこのチャンネルを削除します…")
+
         if self.result_channel_id and self.ticket_channel:
             guild = self.ticket_channel.guild
             result_ch = guild.get_channel(self.result_channel_id)
@@ -113,8 +108,7 @@ class OthelloView(discord.ui.View):
                 res_embed.add_field(name="結果", value=result_text, inline=False)
                 res_embed.set_footer(text=f"終了者：{interaction.user}")
                 await result_ch.send(embed=res_embed)
-        
-        # 3秒後にチャンネル削除
+
         import asyncio
         await asyncio.sleep(3)
         if self.ticket_channel:
@@ -131,17 +125,21 @@ class OthelloView(discord.ui.View):
             await interaction.response.send_message("自分の番ではありません", ephemeral=True)
             return
 
+        parent_view = self  # 親の参照を保持
+
         class RowSelectView(discord.ui.View):
-            def __init__(self, parent_view, col_idx):
+            def __init__(self, parent, col_idx):
                 super().__init__(timeout=30)
-                self.parent = parent_view
+                self.parent = parent
                 self.col = col_idx
+                # 1行目：1～5
                 for r in range(5):
                     self.add_item(discord.ui.Button(
                         label=str(r+1),
                         style=discord.ButtonStyle.secondary,
                         custom_id=f"rowsel_{r}"
                     ))
+                # 2行目：6～8
                 for r in range(5, 8):
                     self.add_item(discord.ui.Button(
                         label=str(r+1),
@@ -150,11 +148,36 @@ class OthelloView(discord.ui.View):
                         row=1
                     ))
 
-            async def callback(self, interaction: discord.Interaction):
-                row = int(interaction.data["custom_id"].split("_")[1])
+            @discord.ui.button(label="1", style=discord.ButtonStyle.secondary, row=0)
+            async def row1(self, interaction: discord.Interaction, btn):
+                await self.process_row(interaction, 0)
+            @discord.ui.button(label="2", style=discord.ButtonStyle.secondary, row=0)
+            async def row2(self, interaction: discord.Interaction, btn):
+                await self.process_row(interaction, 1)
+            @discord.ui.button(label="3", style=discord.ButtonStyle.secondary, row=0)
+            async def row3(self, interaction: discord.Interaction, btn):
+                await self.process_row(interaction, 2)
+            @discord.ui.button(label="4", style=discord.ButtonStyle.secondary, row=0)
+            async def row4(self, interaction: discord.Interaction, btn):
+                await self.process_row(interaction, 3)
+            @discord.ui.button(label="5", style=discord.ButtonStyle.secondary, row=0)
+            async def row5(self, interaction: discord.Interaction, btn):
+                await self.process_row(interaction, 4)
+            @discord.ui.button(label="6", style=discord.ButtonStyle.secondary, row=1)
+            async def row6(self, interaction: discord.Interaction, btn):
+                await self.process_row(interaction, 5)
+            @discord.ui.button(label="7", style=discord.ButtonStyle.secondary, row=1)
+            async def row7(self, interaction: discord.Interaction, btn):
+                await self.process_row(interaction, 6)
+            @discord.ui.button(label="8", style=discord.ButtonStyle.secondary, row=1)
+            async def row8(self, interaction: discord.Interaction, btn):
+                await self.process_row(interaction, 7)
+
+            async def process_row(self, interaction, row):
                 if not self.parent.check_turn(interaction):
                     await interaction.response.send_message("自分の番ではありません", ephemeral=True)
                     return
+
                 if not self.parent.board.put(row, self.col):
                     await interaction.response.send_message("❌ そこには置けません", ephemeral=True)
                     return
@@ -164,6 +187,7 @@ class OthelloView(discord.ui.View):
                     self.parent.board.current = next_color
 
                 embed = await self.parent.build_embed()
+
                 if self.parent.board.is_game_over():
                     b, w = self.parent.board.count()
                     if b > w:
@@ -172,10 +196,15 @@ class OthelloView(discord.ui.View):
                         result = f"⚪ {self.parent.player_white.mention} の勝ち！"
                     else:
                         result = "🤝 引き分け！"
-                    embed.set_field_at(0, name="🏆 対戦結果", value=f"黒：{b}　白：{w}\n{result}", inline=False)
+
+                    embed.set_field_at(
+                        0,
+                        name="🏆 対戦結果",
+                        value=f"黒：{b}　白：{w}\n{result}",
+                        inline=False
+                    )
                     self.parent.disable_all_items()
-                    
-                    # 通常終了時も結果送信＆チャンネル削除
+
                     if self.parent.result_channel_id and self.parent.ticket_channel:
                         guild = self.parent.ticket_channel.guild
                         result_ch = guild.get_channel(self.parent.result_channel_id)
@@ -185,9 +214,9 @@ class OthelloView(discord.ui.View):
                             res_embed.add_field(name="最終スコア", value=f"黒：{b}　白：{w}", inline=False)
                             res_embed.add_field(name="結果", value=result, inline=False)
                             await result_ch.send(embed=res_embed)
-                    
+
                     await interaction.response.edit_message(embed=embed, view=self.parent)
-                    
+
                     if self.parent.ticket_channel:
                         await self.parent.ticket_channel.send("✅ 対戦終了！5秒後にこのチャンネルを削除します")
                         import asyncio
@@ -199,7 +228,12 @@ class OthelloView(discord.ui.View):
                 else:
                     await interaction.response.edit_message(embed=embed, view=self.parent)
 
-        await interaction.response.send_message("👇 行番号を選んでください：", view=RowSelectView(self, col), ephemeral=True)
+        row_view = RowSelectView(parent_view, col)
+        await interaction.response.send_message(
+            "👇 行番号を選んでください：",
+            view=row_view,
+            ephemeral=True
+        )
 
     def disable_all_items(self):
         for child in self.children:
