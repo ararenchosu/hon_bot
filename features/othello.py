@@ -9,8 +9,8 @@ class OthelloGame:
         self.player_black = player_black
         self.player_white = player_white
 
-async def setup(bot: commands.Bot):
-    @bot.tree.command(name="オセロ", description="オセロで対戦します")
+async def setup(tree: app_commands.CommandTree):
+    @tree.command(name="オセロ", description="オセロで対戦")
     async def othello(interaction: discord.Interaction, 相手: discord.Member):
         if interaction.user == 相手:
             await interaction.response.send_message("自分自身とは対戦できません", ephemeral=True)
