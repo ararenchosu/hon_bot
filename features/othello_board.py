@@ -58,9 +58,7 @@ class OthelloBoard:
 
     def render(self):
         lines = []
-        # ✅ 0 を数字の1の真上に配置 → スペースで位置を合わせ
-        lines.append("  0 ａ ｂ ｃ ｄ ｅ ｆ ｇ ｈ")
-        # ✅ 行：1～8
+        lines.append("    ａ ｂ ｃ ｄ ｅ ｆ ｇ ｈ")
         for i, row in enumerate(self.board):
             cells = []
             for cell in row:
@@ -70,5 +68,5 @@ class OthelloBoard:
                     cells.append("⚪")
                 else:
                     cells.append("⬜")
-            lines.append(f"{i+1}  " + " ".join(cells))
+            lines.append(f"{i+1:2d}  " + "".join(cells))
         return "\n".join(lines)
