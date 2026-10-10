@@ -1,6 +1,42 @@
 import discord
 from discord import app_commands
 from core.common import is_owner
+from core.database import get_connection
+
+# ========== 追加：パネル保存/読み込み ==========
+def save_auth_panel(channel_id: int, message_id: int, title: str, description: str, color: int):
+    """認証パネル内容を保存（設置時・編集時に自動実行）"""
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT OR REPLACE INTO auth_panel (channel_id, message_id, title, description, color)
+        VALUES (?, ?, ?, ?, ?)
+    """, (str(channel_id), str(message_id), title, description, color))
+    conn.commit()
+    conn.close()
+
+def get_latest_auth_panel():
+    """一番新しい保存内容を取得（編集時の初期値に使用）"""
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT channel_id, message_id, title, description, color
+        FROM auth_panel
+        ORDER BY updated_at DESC
+        LIMIT 1
+    """)
+    r = cur.fetchone()
+    conn.close()
+    if r:
+        return {
+            "channel_id": int(r[0]),
+            "message_id": int(r[1]),
+            "title": r[2],
+            "description": r[3],
+            "color": int(r[4])
+        }
+    return None
+# ===========================================
 
 class AuthPanelView(discord.ui.View):
     def __init__(self):
@@ -23,21 +59,34 @@ class AuthPanelView(discord.ui.View):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
             return
+        # ✅ 最新の内容を初期値に表示
+        latest = get_latest_auth_panel()
+        default_title = latest["title"] if latest else "🔐 サーバー認証"
+        default_desc = latest["description"] if latest else "下のボタンを押して「鯖メン」ロールを取得してください。"
 
         class AuthEditModal(discord.ui.Modal, title="認証パネル編集"):
-            title_in = discord.ui.TextInput(label="タイトル", default="🔐 サーバー認証")
+            title_in = discord.ui.TextInput(label="タイトル", default=default_title)
             desc_in = discord.ui.TextInput(
                 label="説明", style=discord.TextStyle.long,
-                default="下のボタンを押して「鯖メン」ロールを取得してください。"
+                default=default_desc
             )
-
             async def on_submit(self, inter: discord.Interaction):
-                embed = discord.Embed(title=str(self.title_in), description=str(self.desc_in), color=0x2ecc71)
+                embed = discord.Embed(
+                    title=str(self.title_in),
+                    description=str(self.desc_in),
+                    color=0x2ecc71
+                )
                 await inter.response.edit_message(embed=embed, view=AuthPanelView())
-                await inter.followup.send("✅ 更新しました", ephemeral=True)
-
+                # ✅ 編集したら自動保存
+                save_auth_panel(
+                    inter.channel_id,
+                    inter.message.id,
+                    str(self.title_in),
+                    str(self.desc_in),
+                    0x2ecc71
+                )
+                await inter.followup.send("✅ 更新・保存完了", ephemeral=True)
         await itx.response.send_modal(AuthEditModal())
-
 
 async def setup(tree):
     @tree.command(name="認証パネル設置", description="鯖認証パネル設置（オーナー専用）")
@@ -51,3 +100,12 @@ async def setup(tree):
             color=0x2ecc71
         )
         await itx.response.send_message(embed=embed, view=AuthPanelView())
+        # ✅ 新規設置時に自動保存
+        msg = await itx.original_response()
+        save_auth_panel(
+            itx.channel_id,
+            msg.id,
+            embed.title,
+            embed.description,
+            embed.color.value
+        )
