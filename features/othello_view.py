@@ -43,17 +43,14 @@ class RowSelectView(discord.ui.View):
         await self._process(interaction, 7)
 
     async def _process(self, interaction, row):
-        # 自分の番かチェック
         if not self.parent.check_turn(interaction):
             await interaction.response.send_message("自分の番ではありません", ephemeral=True)
             return
 
-        # 石を置く
         if not self.parent.board.put(row, self.col):
             await interaction.response.send_message("❌ そこには置けません", ephemeral=True)
             return
 
-        # パス処理
         next_color = WHITE if self.parent.board.current == BLACK else BLACK
         if not self.parent.board.can_put(next_color) and not self.parent.board.is_game_over():
             self.parent.board.current = next_color
@@ -72,7 +69,6 @@ class RowSelectView(discord.ui.View):
             embed.set_field_at(0, name="🏆 対戦結果", value=f"黒：{b}　白：{w}\n{result}", inline=False)
             self.parent.disable_all_items()
 
-            # 結果を専用チャンネルに送信
             if self.parent.result_channel_id and self.parent.ticket_channel:
                 guild = self.parent.ticket_channel.guild
                 result_ch = guild.get_channel(self.parent.result_channel_id)
@@ -83,9 +79,9 @@ class RowSelectView(discord.ui.View):
                     res_embed.add_field(name="結果", value=result, inline=False)
                     await result_ch.send(embed=res_embed)
 
+            # ✅ 元の盤面メッセージを直接更新
             await interaction.response.edit_message(embed=embed, view=self.parent)
 
-            # チャンネル削除
             if self.parent.ticket_channel:
                 await self.parent.ticket_channel.send("✅ 対戦終了！5秒後にこのチャンネルを削除します")
                 import asyncio
@@ -95,6 +91,7 @@ class RowSelectView(discord.ui.View):
                 except:
                     pass
         else:
+            # ✅ 元の盤面メッセージを直接更新 → 個別メッセージは削除
             await interaction.response.edit_message(embed=embed, view=self.parent)
 
 
@@ -226,6 +223,7 @@ class OthelloView(discord.ui.View):
             return
 
         view = RowSelectView(self, col)
+        # ✅ ephemeral な行選択表示 → 押したら元のメッセージに統合
         await interaction.response.send_message(
             "👇 行番号を選んでください：",
             view=view,
