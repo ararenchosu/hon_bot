@@ -25,7 +25,7 @@ async def on_ready():
     await othello.setup(tree)       # ← 戻す
     await othello_panel.setup(tree)
 
-    GUILD_ID = 【1542788841465978880】
+    GUILD_ID = 1542788841465978880
     await tree.sync(guild=discord.Object(id=GUILD_ID))
     print(f"✅ 起動完了：{bot.user}")
     print("✅ コマンド同期完了")
