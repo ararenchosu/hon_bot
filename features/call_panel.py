@@ -1,1 +1,83 @@
+import discord
+from core.common import is_owner, CALL_CHANNEL_ID
+from core.database import get_connection
 
+def get_call_message():
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("SELECT value FROM config WHERE key='call_message'")
+    r = cur.fetchone()
+    conn.close()
+    return r[0] if r else "$caller$さんが $target$さんを呼んでいます。"
+
+def set_call_message(text):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("REPLACE INTO config VALUES ('call_message', ?)", (text,))
+    conn.commit()
+    conn.close()
+
+class CallPanelView(discord.ui.View):
+    def __init__(self, bot):
+        super().__init__(timeout=None)
+        self.bot = bot
+
+    @discord.ui.button(label="📢 メンバーを呼ぶ", style=discord.ButtonStyle.primary, custom_id="call:do")
+    async def do_call(self, itx, btn):
+        class UserSelView(discord.ui.View):
+            def __init__(self, bot):
+                super().__init__()
+                self.bot = bot
+                self.add_item(discord.ui.UserSelect(placeholder="呼び出すユーザーを選択", max_values=1))
+            async def interaction_check(self, inter):
+                target = self.children[0].values[0]
+                msg = get_call_message().replace("$caller$", inter.user.mention).replace("$target$", target.mention)
+                ch = self.bot.get_channel(CALL_CHANNEL_ID)
+                if ch:
+                    await ch.send(msg)
+                    await inter.response.send_message(f"✅ {target.mention} を呼び出しました！", ephemeral=True)
+                else:
+                    await inter.response.send_message("❌ 通知チャンネルが見つかりません", ephemeral=True)
+                return True
+        await itx.response.send_message("呼び出すユーザーを選択：", view=UserSelView(self.bot), ephemeral=True)
+
+    @discord.ui.button(label="✏️ パネル編集", style=discord.ButtonStyle.secondary, custom_id="call:edit")
+    async def edit_panel(self, itx, btn):
+        if not is_owner(itx):
+            await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
+            return
+        class EditModal(discord.ui.Modal, title="呼び出しパネル編集"):
+            title_in = discord.ui.TextInput(label="タイトル", default="📢 メンバー呼び出し")
+            desc_in = discord.ui.TextInput(label="説明", style=discord.TextStyle.long, default="ボタンからメンバーを選んで呼び出せます。")
+            async def on_submit(self, inter):
+                embed = discord.Embed(title=str(self.title_in), description=str(self.desc_in), color=0xe67e22)
+                await inter.response.edit_message(embed=embed)
+                await inter.followup.send("✅ 更新", ephemeral=True)
+        await itx.response.send_modal(EditModal())
+
+    @discord.ui.button(label="💬 メッセージ文変更", style=discord.ButtonStyle.secondary, custom_id="call:msg")
+    async def edit_msg(self, itx, btn):
+        if not is_owner(itx):
+            await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
+            return
+        class MsgModal(discord.ui.Modal, title="呼び出しメッセージ編集"):
+            msg_in = discord.ui.TextInput(label="文（$caller$/$target$ 置換）", default=get_call_message(), style=discord.TextStyle.long)
+            async def on_submit(self, inter):
+                set_call_message(str(self.msg_in))
+                await inter.response.send_message(f"✅ 更新：\n{self.msg_in}", ephemeral=True)
+        await itx.response.send_modal(MsgModal())
+
+async def setup(tree, bot):
+    global _bot_ref
+    _bot_ref = bot
+    @tree.command(name="呼び出しパネル設置", description="呼び出しパネル設置（オーナー専用）")
+    async def cmd_call_panel(itx: discord.Interaction):
+        if not is_owner(itx):
+            await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
+            return
+        embed = discord.Embed(
+            title="📢 メンバー呼び出し",
+            description="ボタンからメンバーを選択して呼び出せます。\n通知は専用チャンネルに送信されます。",
+            color=0xe67e22
+        )
+        await itx.response.send_message(embed=embed, view=CallPanelView(bot))
