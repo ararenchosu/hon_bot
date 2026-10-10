@@ -1,14 +1,12 @@
 import discord
 from discord import app_commands
 import os
-from dotenv import load_dotenv
 
-# ===== .envからトークンを読み込み =====
-load_dotenv()
-BOT_TOKEN = os.getenv("BOT_TOKEN")
+# ===== FadeHost環境変数から読み込み =====
+BOT_TOKEN = os.getenv("DISCORD_TOKEN")
 
 if not BOT_TOKEN:
-    print("❌ エラー：.env に BOT_TOKEN が設定されていません")
+    print("❌ エラー：環境変数 DISCORD_TOKEN が設定されていません")
     exit(1)
 
 print(f"✅ トークン読み込み完了：{BOT_TOKEN[:10]}...")
