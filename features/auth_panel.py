@@ -62,7 +62,7 @@ class AuthPanelView(discord.ui.View):
         # ✅ 最新の内容を初期値に表示
         latest = get_latest_auth_panel()
         default_title = latest["title"] if latest else "🔐 サーバー認証"
-        default_desc = latest["description"] if latest else "⬇️のボタンを押して「鯖メン」ロールを取得してください。取得後鯖全体を閲覧できます。"
+        default_desc = latest["description"] if latest else "⬇️のボタンを押して「鯖メン」ロールを取得してください。\n取得後鯖全体を閲覧できます。"
 
         class AuthEditModal(discord.ui.Modal, title="認証パネル編集"):
             title_in = discord.ui.TextInput(label="タイトル", default=default_title)
