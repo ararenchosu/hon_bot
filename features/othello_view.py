@@ -8,22 +8,26 @@ class OthelloView(discord.ui.View):
         self.player_black = player_black
         self.player_white = player_white
         self.board = game.board
+        self.message = None
 
     async def build_embed(self):
         b, w = self.board.count()
         
-        # 現在の番のユーザーを取得
-        current_player = self.player_black if self.board.current == BLACK else self.player_white
-        
-        # メッセージを動的に生成
-        turn_text = ""
-        if current_player.id == self.player_black.id:
-            turn_text = f"自分の番です"
-        else:
-            turn_text = f"相手の番です"
+        # 番の表示：色で表記
+        turn_text = "⚫ 黒の番です" if self.board.current == BLACK else "⚪ 白の番です"
         
         embed = discord.Embed(title="🔳 オセロ", description=self.board.render(), color=0x222222)
-        embed.add_field(name="状況", value=f"黒：{b}　白：{w}\n{turn_text}", inline=False)
+        embed.add_field(
+            name="状況",
+            value=f"黒：{b}　白：{w}\n{turn_text}",
+            inline=False
+        )
+        # ✅ プレイヤー情報を追加
+        embed.add_field(
+            name="プレイヤー",
+            value=f"{self.player_black.mention} 黒\n{self.player_white.mention} 白",
+            inline=False
+        )
         return embed
 
     def check_turn(self, interaction):
@@ -33,7 +37,7 @@ class OthelloView(discord.ui.View):
             return False
         return True
 
-    # ✅ row=0 に a～e の5個（1行目）
+    # row=0 に a～e
     @discord.ui.button(label="ａ", style=discord.ButtonStyle.secondary, row=0)
     async def col_a(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.handle_move(interaction, 0)
@@ -50,7 +54,7 @@ class OthelloView(discord.ui.View):
     async def col_e(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.handle_move(interaction, 4)
 
-    # ✅ row=1 に f～h の3個（2行目）
+    # row=1 に f～h
     @discord.ui.button(label="ｆ", style=discord.ButtonStyle.secondary, row=1)
     async def col_f(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.handle_move(interaction, 5)
@@ -65,11 +69,12 @@ class OthelloView(discord.ui.View):
         if not self.check_turn(interaction):
             await interaction.response.send_message("自分の番ではありません", ephemeral=True)
             return
+        
         class RowSelect(discord.ui.View):
-            def __init__(self, parent, col):
+            def __init__(self, parent_view, col_idx):
                 super().__init__(timeout=30)
-                self.parent = parent
-                self.col = col
+                self.parent = parent_view
+                self.col = col_idx
                 for r in range(8):
                     self.add_item(discord.ui.Button(
                         label=str(r+1), style=discord.ButtonStyle.secondary,
@@ -83,16 +88,18 @@ class OthelloView(discord.ui.View):
                 if not self.parent.board.put(row, self.col):
                     await interaction.response.send_message("そこには置けません", ephemeral=True)
                     return
+                
                 next_color = WHITE if self.parent.board.current == BLACK else BLACK
                 if not self.parent.board.can_put(next_color) and not self.parent.board.is_game_over():
                     self.parent.board.current = next_color
+                
                 embed = await self.parent.build_embed()
                 if self.parent.board.is_game_over():
                     b, w = self.parent.board.count()
                     if b > w:
-                        result = "⚫ 黒の勝ち！"
+                        result = f"⚫ {self.parent.player_black.mention} の勝ち！"
                     elif w > b:
-                        result = "⚪ 白の勝ち！"
+                        result = f"⚪ {self.parent.player_white.mention} の勝ち！"
                     else:
                         result = "引き分け"
                     embed.set_field_at(0, name="結果", value=f"黒：{b}　白：{w}\n{result}", inline=False)
@@ -100,6 +107,7 @@ class OthelloView(discord.ui.View):
                     await interaction.response.edit_message(embed=embed, view=self.parent)
                 else:
                     await interaction.response.edit_message(embed=embed, view=self.parent)
+        
         await interaction.response.send_message("行を選んでください：", view=RowSelect(self, col), ephemeral=True)
 
     def disable_all_items(self):
