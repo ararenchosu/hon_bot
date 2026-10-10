@@ -207,7 +207,7 @@ async def setup(tree):
             return
         embed = discord.Embed(
             title="🔳 オセロで対戦しよう！",
-            description="下のボタンを押して対戦相手を選んでください。\n承諾されると専用チャンネルが自動作成されます。",
+            description="⬇️のボタンを押して対戦相手を選んでください。\n承諾されると専用チャンネルが自動作成されます。",
             color=0x222222
         )
         await itx.response.send_message(embed=embed, view=OthelloPanelView())
