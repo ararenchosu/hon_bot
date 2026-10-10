@@ -1,7 +1,7 @@
 import discord
 from discord.ext import commands
-from othello_board import OthelloBoard
-from othello_view import OthelloView
+from .othello_board import OthelloBoard
+from .othello_view import OthelloView
 
 class OthelloGame:
     def __init__(self, player_black, player_white):
