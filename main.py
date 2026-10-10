@@ -26,27 +26,23 @@ import features.welcome_leave as welcome_leave
 
 @bot.event
 async def on_ready():
-    # View登録（永続ボタン）
+    # ✅ 永続View登録
     try:
         bot.add_view(othello_panel.OthelloPanelView())
-        # 各パネルのViewも同様に登録
-        # bot.add_view(auth_panel.AuthPanelView())
-        # bot.add_view(role_panel.RoleGivePanelView())
-        # bot.add_view(revoke_panel.RoleRemovePanelView())
-        # bot.add_view(call_panel.CallPanelView())
+        bot.add_view(call_panel.CallPanelView(bot))  # ← bot渡す
     except Exception as e:
-        print(f"⚠️ View登録スキップ: {e}")
+        print(f"⚠️ View登録: {e}")
 
-    # 各機能のコマンド登録
+    # ✅ コマンド登録（引数の形に注意）
     await othello.setup(tree)
     await othello_panel.setup(tree)
     await auth_panel.setup(tree)
     await role_panel.setup(tree)
     await revoke_panel.setup(tree)
-    await call_panel.setup(tree)
-    await welcome_leave.setup(bot)  # 入退出通知
+    await call_panel.setup(tree, bot)  # ← tree, bot の順で2つ渡す
+    await welcome_leave.setup(bot)
 
-    # ✅ ギルド同期（即時反映）
+    # ✅ ギルド同期
     GUILD_ID = 1542788841465978880
     await tree.sync(guild=discord.Object(id=GUILD_ID))
     
