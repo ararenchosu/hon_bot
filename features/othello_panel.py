@@ -107,16 +107,19 @@ class OthelloPanelView(discord.ui.View):
         class ApproveRejectView(discord.ui.View):
             def __init__(self):
                 super().__init__(timeout=120)
-                self.decision = None
+                self.final_decision = None
 
             @discord.ui.button(label="✅ 承認", style=discord.ButtonStyle.success)
-            async def approve(self, btn_itx: discord.Interaction, btn):
+            async def approve_btn(self, btn_itx: discord.Interaction, btn):
                 if btn_itx.user.id != opponent.id:
                     await btn_itx.response.send_message("❌ 招待された人だけが押せます", ephemeral=True)
                     return
-                self.decision = "approve"
+                self.final_decision = "approve"
                 self.stop()
-                await btn_itx.response.send_message("✅ 承認されました。⬇️の盤面表示ボタンを押して開始しましょう", ephemeral=False)
+                await btn_itx.response.send_message(
+                    "✅ 承認されました。⬇️の盤面表示ボタンを押して開始しましょう",
+                    ephemeral=False
+                )
 
                 # ===== 盤面表示ボタン =====
                 class StartBoardView(discord.ui.View):
@@ -124,11 +127,15 @@ class OthelloPanelView(discord.ui.View):
                         super().__init__(timeout=None)
 
                     @discord.ui.button(label="🎮 盤面表示", style=discord.ButtonStyle.primary)
-                    async def show_board(self, board_itx: discord.Interaction, btn):
+                    async def show_board_btn(self, board_itx: discord.Interaction, btn):
+                        # 即座に応答を返してタイムアウトを回避
+                        await board_itx.response.defer()
+                        
                         active_games.add(challenger.id)
                         active_games.add(opponent.id)
+                        
                         game_view = OthelloView(challenger, opponent)
-                        await board_itx.response.send_message(
+                        await ticket_ch.send(
                             f"⚫ 先攻：{challenger.mention}\n⚪ 後攻：{opponent.mention}\n先攻の番です！",
                             view=game_view
                         )
@@ -161,14 +168,17 @@ class OthelloPanelView(discord.ui.View):
                         active_games.discard(challenger.id)
                         active_games.discard(opponent.id)
 
-                await ticket_ch.send("🎮 下のボタンを押してオセロを開始してください", view=StartBoardView())
+                await ticket_ch.send(
+                    "🎮 下のボタンを押してオセロを開始してください",
+                    view=StartBoardView()
+                )
 
             @discord.ui.button(label="❌ 拒否", style=discord.ButtonStyle.danger)
-            async def reject(self, btn_itx: discord.Interaction, btn):
+            async def reject_btn(self, btn_itx: discord.Interaction, btn):
                 if btn_itx.user.id != opponent.id:
                     await btn_itx.response.send_message("❌ 招待された人だけが押せます", ephemeral=True)
                     return
-                self.decision = "reject"
+                self.final_decision = "reject"
                 self.stop()
                 await btn_itx.response.send_message("❌ 拒否されたのでチケット削除します", ephemeral=False)
                 await ticket_ch.send("5秒後にこのチャンネルを削除します")
@@ -183,7 +193,7 @@ class OthelloPanelView(discord.ui.View):
 
         await ar_view.wait()
 
-        if ar_view.decision is None:
+        if ar_view.final_decision is None:
             await ticket_ch.send("⏰ 応答がないため、このチャンネルを削除します")
             await asyncio.sleep(3)
             await ticket_ch.delete()
