@@ -1,5 +1,5 @@
 import discord
-from othello_board import OthelloBoard, BLACK, WHITE
+from .othello_board import OthelloBoard, BLACK, WHITE
 
 class OthelloView(discord.ui.View):
     def __init__(self, game, player_black, player_white):
