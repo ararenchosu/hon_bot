@@ -80,7 +80,7 @@ class CallPanelView(discord.ui.View):
             return
         latest = get_latest_call_panel()
         default_title = latest["title"] if latest else "📢 メンバー呼び出し"
-        default_desc = latest["description"] if latest else "ボタンからメンバーを選んで呼び出せます。"
+        default_desc = latest["description"] if latest else "「メンバーを呼ぶ」からメンバーを選んで呼び出せます。"
 
         class EditModal(discord.ui.Modal, title="呼び出しパネル編集"):
             title_in = discord.ui.TextInput(label="タイトル", default=default_title)
