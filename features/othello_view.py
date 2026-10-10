@@ -23,31 +23,31 @@ class OthelloView(discord.ui.View):
             return False
         return True
 
-    # ✅ 1行目：a～e（5個）
-    @discord.ui.button(label="ａ", style=discord.ButtonStyle.secondary, row=1)
+    # ✅ row=0 に a～e の5個（1行目）
+    @discord.ui.button(label="ａ", style=discord.ButtonStyle.secondary, row=0)
     async def col_a(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.handle_move(interaction, 0)
-    @discord.ui.button(label="ｂ", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="ｂ", style=discord.ButtonStyle.secondary, row=0)
     async def col_b(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.handle_move(interaction, 1)
-    @discord.ui.button(label="ｃ", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="ｃ", style=discord.ButtonStyle.secondary, row=0)
     async def col_c(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.handle_move(interaction, 2)
-    @discord.ui.button(label="ｄ", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="ｄ", style=discord.ButtonStyle.secondary, row=0)
     async def col_d(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.handle_move(interaction, 3)
-    @discord.ui.button(label="ｅ", style=discord.ButtonStyle.secondary, row=1)
+    @discord.ui.button(label="ｅ", style=discord.ButtonStyle.secondary, row=0)
     async def col_e(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.handle_move(interaction, 4)
 
-    # ✅ 2行目：f～h（3個）→ row=2 に変更
-    @discord.ui.button(label="ｆ", style=discord.ButtonStyle.secondary, row=2)
+    # ✅ row=1 に f～h の3個（2行目）
+    @discord.ui.button(label="ｆ", style=discord.ButtonStyle.secondary, row=1)
     async def col_f(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.handle_move(interaction, 5)
-    @discord.ui.button(label="ｇ", style=discord.ButtonStyle.secondary, row=2)
+    @discord.ui.button(label="ｇ", style=discord.ButtonStyle.secondary, row=1)
     async def col_g(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.handle_move(interaction, 6)
-    @discord.ui.button(label="ｈ", style=discord.ButtonStyle.secondary, row=2)
+    @discord.ui.button(label="ｈ", style=discord.ButtonStyle.secondary, row=1)
     async def col_h(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.handle_move(interaction, 7)
 
