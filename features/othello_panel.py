@@ -118,7 +118,7 @@ class OthelloPanelView(discord.ui.View):
                 self.final_decision = "approve"
                 self.stop()
 
-                # ===== 盤面表示ボタンを同じメッセージにまとめる =====
+                # ===== 盤面表示ボタン =====
                 class StartBoardView(discord.ui.View):
                     def __init__(self):
                         super().__init__(timeout=None)
@@ -172,7 +172,7 @@ class OthelloPanelView(discord.ui.View):
                         active_games.discard(challenger.id)
                         active_games.discard(opponent.id)
 
-                # ✅ 修正：メッセージとボタンを一緒に表示
+                # メッセージとボタンをまとめて表示
                 await btn_itx.response.send_message(
                     "✅ 承認されました。⬇️の盤面表示ボタンを押して開始しましょう",
                     view=StartBoardView(),
