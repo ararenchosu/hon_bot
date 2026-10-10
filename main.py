@@ -2,68 +2,32 @@ import discord
 from discord import app_commands
 import os
 
-# ===== FadeHost環境変数から読み込み =====
 BOT_TOKEN = os.getenv("DISCORD_TOKEN")
-
 if not BOT_TOKEN:
-    print("❌ エラー：環境変数 DISCORD_TOKEN が設定されていません")
+    print("❌ 環境変数 DISCORD_TOKEN が設定されていません")
     exit(1)
-
 print(f"✅ トークン読み込み完了：{BOT_TOKEN[:10]}...")
-
-# ===== 共通設定 =====
-from core.common import OWNER_ID, CALL_CHANNEL_ID, WELCOME_LEAVE_CHANNEL_ID
-from core.database import init_db
 
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
-
 bot = discord.Client(intents=intents)
 tree = app_commands.CommandTree(bot)
 
-# ===== 機能読み込み =====
-import features.auth_panel as auth_panel
-import features.role_panel as role_panel
-import features.revoke_panel as revoke_panel
-import features.call_panel as call_panel
-import features.welcome_leave as welcome_leave
-import features.embed_tool as embed_tool
+# ✅ 両方読み込む
 import features.othello as othello
 import features.othello_panel as othello_panel
 
-# ===== 起動時処理 =====
 @bot.event
 async def on_ready():
-    init_db()
+    bot.add_view(othello_panel.OthelloPanelView())
+    
+    await othello.setup(tree)       # ← 戻す
+    await othello_panel.setup(tree)
 
-    # --- View登録（再起動してもボタンが動くように） ---
-    bot.add_view(auth_panel.AuthPanelView())
-    bot.add_view(role_panel.RoleSelectPanelView())
-    bot.add_view(revoke_panel.RoleRevokePanelView())
-    bot.add_view(call_panel.CallPanelView(bot))
-    bot.add_view(othello_panel.OthelloPanelView())  # ← 追加
-
-    # --- コマンド登録 ---
-    await auth_panel.setup(tree)
-    await role_panel.setup(tree)
-    await revoke_panel.setup(tree)
-    await call_panel.setup(tree, bot)
-    await embed_tool.setup(tree)
-    await othello.setup(tree)
-    await othello_panel.setup(tree)  # ← 追加
-
-    # --- 入退室イベント ---
-    @bot.event
-    async def on_member_join(member):
-        await welcome_leave.on_member_join(member)
-
-    @bot.event
-    async def on_member_remove(member):
-        await welcome_leave.on_member_remove(member)
-
-    await tree.sync()
+    GUILD_ID = 【ここにサーバーID】
+    await tree.sync(guild=discord.Object(id=GUILD_ID))
     print(f"✅ 起動完了：{bot.user}")
-    print(f"💾 データ保存先：data/kn_server.db")
+    print("✅ コマンド同期完了")
 
 bot.run(BOT_TOKEN)
