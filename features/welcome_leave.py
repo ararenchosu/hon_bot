@@ -3,6 +3,7 @@ from datetime import datetime
 from core.common import JST, WELCOME_LEAVE_CHANNEL_ID
 from core.database import get_connection
 
+
 def get_next_member_number():
     conn = get_connection()
     cur = conn.cursor()
@@ -14,7 +15,8 @@ def get_next_member_number():
     conn.close()
     return num
 
-def make_member_embed(member, is_join=True):
+
+def make_member_embed(member: discord.Member, is_join: bool = True) -> discord.Embed:
     created_at = member.created_at.astimezone(JST)
     now = datetime.now(JST)
     account_age_days = (now - created_at).days
@@ -43,7 +45,8 @@ def make_member_embed(member, is_join=True):
     embed.set_thumbnail(url=member.display_avatar.url)
     return embed
 
-async def on_member_join(member):
+
+async def on_member_join(member: discord.Member) -> None:
     if member.bot:
         return
     ch = member.guild.get_channel(WELCOME_LEAVE_CHANNEL_ID)
@@ -51,7 +54,8 @@ async def on_member_join(member):
         embed = make_member_embed(member, is_join=True)
         await ch.send(embed=embed)
 
-async def on_member_remove(member):
+
+async def on_member_remove(member: discord.Member) -> None:
     if member.bot:
         return
     ch = member.guild.get_channel(WELCOME_LEAVE_CHANNEL_ID)
@@ -59,5 +63,6 @@ async def on_member_remove(member):
         embed = make_member_embed(member, is_join=False)
         await ch.send(embed=embed)
 
-async def setup(tree):
+
+async def setup(tree) -> None:
     pass  # コマンドなし、イベントのみ登録
