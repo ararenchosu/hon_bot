@@ -1,5 +1,8 @@
 import discord
-from .othello_board import OthelloBoard, BLACK, WHITE
+from .othello_board import OthelloBoard
+
+BLACK = "black"
+WHITE = "white"
 
 class OthelloView(discord.ui.View):
     def __init__(self, game, player_black, player_white):
@@ -12,17 +15,13 @@ class OthelloView(discord.ui.View):
 
     async def build_embed(self):
         b, w = self.board.count()
-        
-        # 番の表示：色で表記
         turn_text = "⚫ 黒の番です" if self.board.current == BLACK else "⚪ 白の番です"
-        
         embed = discord.Embed(title="🔳 オセロ", description=self.board.render(), color=0x222222)
         embed.add_field(
             name="状況",
             value=f"黒：{b}　白：{w}\n{turn_text}",
             inline=False
         )
-        # ✅ プレイヤー情報を追加
         embed.add_field(
             name="プレイヤー",
             value=f"{self.player_black.mention} 黒\n{self.player_white.mention} 白",
@@ -37,7 +36,7 @@ class OthelloView(discord.ui.View):
             return False
         return True
 
-    # row=0 に a～e
+    # 1行目：a～e
     @discord.ui.button(label="ａ", style=discord.ButtonStyle.secondary, row=0)
     async def col_a(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.handle_move(interaction, 0)
@@ -54,7 +53,7 @@ class OthelloView(discord.ui.View):
     async def col_e(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.handle_move(interaction, 4)
 
-    # row=1 に f～h
+    # 2行目：f～h
     @discord.ui.button(label="ｆ", style=discord.ButtonStyle.secondary, row=1)
     async def col_f(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.handle_move(interaction, 5)
@@ -69,7 +68,7 @@ class OthelloView(discord.ui.View):
         if not self.check_turn(interaction):
             await interaction.response.send_message("自分の番ではありません", ephemeral=True)
             return
-        
+
         class RowSelect(discord.ui.View):
             def __init__(self, parent_view, col_idx):
                 super().__init__(timeout=30)
@@ -88,11 +87,11 @@ class OthelloView(discord.ui.View):
                 if not self.parent.board.put(row, self.col):
                     await interaction.response.send_message("そこには置けません", ephemeral=True)
                     return
-                
+
                 next_color = WHITE if self.parent.board.current == BLACK else BLACK
                 if not self.parent.board.can_put(next_color) and not self.parent.board.is_game_over():
                     self.parent.board.current = next_color
-                
+
                 embed = await self.parent.build_embed()
                 if self.parent.board.is_game_over():
                     b, w = self.parent.board.count()
@@ -107,7 +106,7 @@ class OthelloView(discord.ui.View):
                     await interaction.response.edit_message(embed=embed, view=self.parent)
                 else:
                     await interaction.response.edit_message(embed=embed, view=self.parent)
-        
+
         await interaction.response.send_message("行を選んでください：", view=RowSelect(self, col), ephemeral=True)
 
     def disable_all_items(self):
