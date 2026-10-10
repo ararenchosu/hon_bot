@@ -36,7 +36,7 @@ class OthelloView(discord.ui.View):
             return False
         return True
 
-    # 1行目：a～e
+    # ===== 列ボタン =====
     @discord.ui.button(label="ａ", style=discord.ButtonStyle.secondary, row=0)
     async def col_a(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.handle_move(interaction, 0)
@@ -53,7 +53,6 @@ class OthelloView(discord.ui.View):
     async def col_e(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.handle_move(interaction, 4)
 
-    # 2行目：f～h
     @discord.ui.button(label="ｆ", style=discord.ButtonStyle.secondary, row=1)
     async def col_f(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self.handle_move(interaction, 5)
@@ -69,30 +68,47 @@ class OthelloView(discord.ui.View):
             await interaction.response.send_message("自分の番ではありません", ephemeral=True)
             return
 
-        class RowSelect(discord.ui.View):
+        # ===== 行選択用View =====
+        class RowSelectView(discord.ui.View):
             def __init__(self, parent_view, col_idx):
                 super().__init__(timeout=30)
                 self.parent = parent_view
                 self.col = col_idx
-                for r in range(8):
+
+                # 1行目：1～5
+                for r in range(5):
                     self.add_item(discord.ui.Button(
-                        label=str(r+1), style=discord.ButtonStyle.secondary,
-                        custom_id=f"row_{r}"
+                        label=str(r+1),
+                        style=discord.ButtonStyle.secondary,
+                        custom_id=f"rowsel_{r}"
                     ))
+                # 2行目：6～8
+                for r in range(5, 8):
+                    self.add_item(discord.ui.Button(
+                        label=str(r+1),
+                        style=discord.ButtonStyle.secondary,
+                        custom_id=f"rowsel_{r}",
+                        row=1
+                    ))
+
             async def callback(self, interaction: discord.Interaction):
                 row = int(interaction.data["custom_id"].split("_")[1])
+
                 if not self.parent.check_turn(interaction):
                     await interaction.response.send_message("自分の番ではありません", ephemeral=True)
                     return
+
                 if not self.parent.board.put(row, self.col):
-                    await interaction.response.send_message("そこには置けません", ephemeral=True)
+                    await interaction.response.send_message("❌ そこには置けません", ephemeral=True)
                     return
 
+                # パス処理
                 next_color = WHITE if self.parent.board.current == BLACK else BLACK
                 if not self.parent.board.can_put(next_color) and not self.parent.board.is_game_over():
                     self.parent.board.current = next_color
 
                 embed = await self.parent.build_embed()
+
                 if self.parent.board.is_game_over():
                     b, w = self.parent.board.count()
                     if b > w:
@@ -100,14 +116,25 @@ class OthelloView(discord.ui.View):
                     elif w > b:
                         result = f"⚪ {self.parent.player_white.mention} の勝ち！"
                     else:
-                        result = "引き分け"
-                    embed.set_field_at(0, name="結果", value=f"黒：{b}　白：{w}\n{result}", inline=False)
+                        result = "🤝 引き分け！"
+                    embed.set_field_at(
+                        0,
+                        name="🏆 対戦結果",
+                        value=f"黒：{b}　白：{w}\n{result}",
+                        inline=False
+                    )
                     self.parent.disable_all_items()
                     await interaction.response.edit_message(embed=embed, view=self.parent)
                 else:
                     await interaction.response.edit_message(embed=embed, view=self.parent)
 
-        await interaction.response.send_message("行を選んでください：", view=RowSelect(self, col), ephemeral=True)
+        # 行選択を表示
+        row_view = RowSelectView(self, col)
+        await interaction.response.send_message(
+            "👇 行番号を選んでください：",
+            view=row_view,
+            ephemeral=True
+        )
 
     def disable_all_items(self):
         for child in self.children:
