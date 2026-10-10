@@ -30,27 +30,30 @@ import features.call_panel as call_panel
 import features.welcome_leave as welcome_leave
 import features.embed_tool as embed_tool
 import features.othello as othello
+import features.othello_panel as othello_panel
 
 # ===== 起動時処理 =====
 @bot.event
 async def on_ready():
     init_db()
 
-    # View登録
+    # --- View登録（再起動してもボタンが動くように） ---
     bot.add_view(auth_panel.AuthPanelView())
     bot.add_view(role_panel.RoleSelectPanelView())
     bot.add_view(revoke_panel.RoleRevokePanelView())
     bot.add_view(call_panel.CallPanelView(bot))
+    bot.add_view(othello_panel.OthelloPanelView())  # ← 追加
 
-    # コマンド登録
+    # --- コマンド登録 ---
     await auth_panel.setup(tree)
     await role_panel.setup(tree)
     await revoke_panel.setup(tree)
     await call_panel.setup(tree, bot)
     await embed_tool.setup(tree)
     await othello.setup(tree)
+    await othello_panel.setup(tree)  # ← 追加
 
-    # イベント登録
+    # --- 入退室イベント ---
     @bot.event
     async def on_member_join(member):
         await welcome_leave.on_member_join(member)
