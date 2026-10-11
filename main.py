@@ -50,13 +50,15 @@ async def restore_panel(channel_id, message_id, ViewClass, *view_args):
         print(f"⚠️ 復元失敗: {e}")
         return False
 
-# ========== ✅ 禁止ワード監視イベント ここから ==========
+# ========== ✅ 監視イベント：禁止ワード＋リンク制限 ==========
 @bot.event
 async def on_message(message):
-    # 禁止ワードチェック実行
     if message.guild and not message.author.bot:
+        # 禁止ワードチェック
         await security_panel.check_forbidden_words(message)
-# ========== ✅ ここまで追加 ==========
+        # リンク制限チェック
+        await security_panel.check_link_restriction(message)
+# =========================================================
 
 @bot.event
 async def on_ready():
@@ -70,7 +72,11 @@ async def on_ready():
         from features.highlow_panel import HighLowPanelView
         from features.point_admin_panel import PointAdminView
         from features.moderation_panel import ModerationPanelView
-        from features.security_panel import SecurityMainView, ForbiddenWordView, LockChannelView, UnlockChannelView, EmergencyLockView, EmergencyUnlockView
+        from features.security_panel import (
+            SecurityMainView, ForbiddenWordView,
+            LockChannelView, UnlockChannelView,
+            EmergencyLockView, EmergencyUnlockView
+        )
         
         bot.add_view(LotteryPanelView())
         bot.add_view(PointCheckPanelView())
