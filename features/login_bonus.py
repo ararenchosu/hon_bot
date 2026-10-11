@@ -1,7 +1,7 @@
 import discord
 from discord import app_commands
 from core.common import is_owner
-from features.lottery_panel import point_data  # ✅ 既存のポイントデータを共有
+from features.lottery_panel import point_data
 
 
 class LoginBonusPanelView(discord.ui.View):
@@ -10,17 +10,16 @@ class LoginBonusPanelView(discord.ui.View):
 
     @discord.ui.button(label="🎁 ログインボーナス受取", style=discord.ButtonStyle.primary, custom_id="loginbonus:receive")
     async def receive_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
-        if not point_data.can_draw_today(itx.user.id):
+        if not point_data.can_receive_bonus_today(itx.user.id):
             await itx.response.send_message(
                 "✅ 今日は既に受け取り済みです。また明日お待ちください✨",
                 ephemeral=True
             )
             return
-        
-        # ✅ 100ポイント付与
-        point_data.mark_drew_today(itx.user.id)
+
+        point_data.mark_bonus_received(itx.user.id)
         new_points = point_data.add_points(itx.user.id, 100)
-        
+
         await itx.response.send_message(
             f"🎉 ログインボーナス受け取り完了！\n"
             f"➕ 100ポイント 獲得✨\n"
@@ -42,7 +41,8 @@ class LoginBonusPanelView(discord.ui.View):
             desc_in = discord.ui.TextInput(
                 label="説明文",
                 style=discord.TextStyle.long,
-                default="下のボタンを押すと1日1回100ポイントがもらえます✨",
+                default="下のボタンを押すと1日1回100ポイントがもらえます✨\n"
+                        "🎰 くじ引きとは別に受け取れます！",
                 required=True
             )
             async def on_submit(self, m_itx: discord.Interaction):
@@ -65,7 +65,7 @@ async def setup(tree):
         embed = discord.Embed(
             title="🎁 毎日ログインボーナス",
             description="下のボタンを押すと1日1回 **100ポイント** がもらえます✨\n"
-                        "※くじ引きと受け取りは共通です",
+                        "🎰 くじ引きとは別に受け取れます！",
             color=0x00FF7F
         )
         await itx.response.send_message(embed=embed, view=LoginBonusPanelView())
