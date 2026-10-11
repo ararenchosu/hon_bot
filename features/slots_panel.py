@@ -6,9 +6,12 @@ import os
 from datetime import datetime, timedelta, timezone
 from core.common import is_owner
 
+# ===== 統計用共通モジュール読み込み =====
+from core.game_stats import increment
+
 JST = timezone(timedelta(hours=9))
 DATA_FILE = "kn_points_data.json"
-SLOT_RESULT_CHANNEL_ID = 1558766953114370158
+SLOT_RESULT_CHANNEL_ID = 1558766953114370158  # チャンネルID
 
 SYMBOLS = ["🍒", "🍋", "🔔", "💎", "7️⃣"]
 PAYOUT = {
@@ -59,6 +62,7 @@ async def send_result_embed(client, user, reels, result_text, change, total, bet
     if not channel:
         print(f"⚠️ 結果チャンネルが見つかりません: {SLOT_RESULT_CHANNEL_ID}")
         return
+
     embed = discord.Embed(
         title="🎰 スロット結果",
         description=f"{user.mention} がスロットを回しました！",
@@ -73,6 +77,12 @@ async def send_result_embed(client, user, reels, result_text, change, total, bet
     embed.add_field(name="合計P", value=f"{total}P", inline=True)
     embed.set_thumbnail(url=user.display_avatar.url)
     await channel.send(embed=embed)
+
+    # ===== チャンネル名更新 =====
+    count = increment("slot")
+    if channel:
+        await channel.edit(name=f"🎰・スロット・{count}回", reason="プレイ回数更新")
+
 
 class SlotPanelView(discord.ui.View):
     def __init__(self):
@@ -133,6 +143,7 @@ class SlotPanelView(discord.ui.View):
     async def bet100_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
         await play_slot(itx, 100)
 
+
 async def play_slot(itx, bet):
     pts = get_points(itx.user.id)
     if pts < bet:
@@ -151,6 +162,7 @@ async def play_slot(itx, bet):
         ephemeral=True
     )
     await send_result_embed(itx.client, itx.user, reels, result_text, gain, new_total, bet)
+
 
 async def setup(tree: app_commands.CommandTree):
     @tree.command(name="スロットパネル設置", description="スロットパネルを設置（オーナー専用）")
