@@ -828,3 +828,105 @@ async def check_forbidden_words(message: discord.Message):
         timestamp=datetime.now(JST)
     )
     await send_security_log(message.guild, "🔍 禁止ワード検知", log_embed.description, 0xE74C3C)
+import re  # ファイル上部に追加されているか確認
+
+# ========== ⑩ リンク自動検知・制限 ==========
+URL_PATTERN = re.compile(r"http[s]?://(?:[a-zA-Z]|[0-9]|[$-_@.&+]|[!*(),]|(?:%[0-9a-fA-F][0-9a-fA-F]))+", re.IGNORECASE)
+
+# 許可する内部リンク（Discord本体のリンクは除外）
+ALLOWED_DOMAINS = [
+    r"discord\.com/channels/",
+    r"discord\.gg/",
+    r"discord\.new/",
+    r"cdn\.discordapp\.com/",
+    r"media\.discordapp\.net/",
+]
+
+def is_allowed_link(url):
+    """許可されたリンクか判定"""
+    for domain in ALLOWED_DOMAINS:
+        if re.search(domain, url, re.IGNORECASE):
+            return True
+    return False
+
+async def check_link_restriction(message: discord.Message):
+    """メッセージ内のリンクを検知し制限"""
+    
+    # ボット自身は無視 / オーナーは無視
+    if message.author.bot:
+        return
+    from core.common import is_owner
+    if is_owner(message):
+        return
+    
+    # リンク監視がOFFの場合は何もしない
+    if get_setting('link_monitor') != 'on':
+        return
+    
+    # メッセージからURL抽出
+    urls_found = URL_PATTERN.findall(message.content)
+    if not urls_found:
+        return
+    
+    # 許可されていない外部リンクをフィルタリング
+    external_links = [url for url in urls_found if not is_allowed_link(url)]
+    if not external_links:
+        return
+    
+    # ✅ 検知：メッセージ削除
+    try:
+        await message.delete()
+    except Exception as e:
+        print(f"⚠️ リンク制限：削除失敗 {e}")
+        return
+    
+    # ✅ ログ記録
+    add_security_log(
+        message.author.id,
+        str(message.author),
+        "リンク制限",
+        f"検知：{', '.join(external_links)}\n内容：{message.content}",
+        None, None
+    )
+    
+    # ✅ その場に通知（5秒後に自動削除）
+    notice_embed = discord.Embed(
+        title="⚠️ 外部リンクを制限しました",
+        description=f"{message.author.mention} のメッセージを削除しました。\n理由：許可されていない外部リンクが含まれています。",
+        color=0xF39C12,
+        timestamp=datetime.now(JST)
+    )
+    try:
+        await message.channel.send(embed=notice_embed, delete_after=5.0)
+    except:
+        pass
+    
+    # ✅ 本人にDMで警告
+    dm_embed = discord.Embed(
+        title="⚠️ 警告：リンク制限",
+        description=f"""サーバーでは外部リンクの送信を制限しています。
+
+🔗 検知されたリンク：
+{chr(10).join(f'・{url}' for url in external_links[:5])}
+
+※ Discord内のメッセージリンク・招待リンク等は許可されています。
+外部サイトへのリンクは送信しないでください。""",
+        color=0xE74C3C,
+        timestamp=datetime.now(JST)
+    )
+    try:
+        await message.author.send(embed=dm_embed)
+    except Exception as e:
+        print(f"ℹ️ DM送信不可：{message.author} / {e}")
+    
+    # ✅ 監視ログ送信
+    log_embed = discord.Embed(
+        title="🔗 リンク制限検知",
+        description=f"""ユーザー：{message.author.mention}
+チャンネル：{message.channel.mention}
+検知リンク：
+{chr(10).join(f'・{url}' for url in external_links[:10])}""",
+        color=0xE67E22,
+        timestamp=datetime.now(JST)
+    )
+    await send_security_log(message.guild, "🔗 リンク制限", log_embed.description, 0xE67E22)
