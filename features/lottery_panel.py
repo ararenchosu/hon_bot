@@ -4,38 +4,38 @@ from core.common import is_owner
 import json
 import os
 from datetime import datetime, timedelta, timezone
-
 JST = timezone(timedelta(hours=9))
 
-# ✅ データ保存先ファイル
 DATA_FILE = "kn_points_data.json"
 
-# ✅ データ読み書きクラス
 class PointData:
     def __init__(self):
-        self.points = {}       # {ユーザーID: ポイント数}
-        self.last_draw = {}    # {ユーザーID: "YYYY-MM-DD" 最後に引いた日付}
+        self.points = {}
+        self.last_lottery_draw = {}   # くじ用 最終取得日
+        self.last_bonus_receive = {}  # ボーナス用 最終取得日
         self._load()
 
     def _load(self):
-        """ファイルから読み込み"""
         if os.path.exists(DATA_FILE):
             try:
                 with open(DATA_FILE, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     self.points = data.get("points", {})
-                    self.last_draw = data.get("last_draw", {})
+                    # 旧形式からの移行にも対応
+                    self.last_lottery_draw = data.get("last_lottery_draw", data.get("last_draw", {}))
+                    self.last_bonus_receive = data.get("last_bonus_receive", {})
             except Exception as e:
                 print(f"⚠️ データ読み込みエラー: {e}")
                 self.points = {}
-                self.last_draw = {}
+                self.last_lottery_draw = {}
+                self.last_bonus_receive = {}
 
     def _save(self):
-        """ファイルに保存"""
         with open(DATA_FILE, "w", encoding="utf-8") as f:
             json.dump({
                 "points": self.points,
-                "last_draw": self.last_draw
+                "last_lottery_draw": self.last_lottery_draw,
+                "last_bonus_receive": self.last_bonus_receive
             }, f, ensure_ascii=False, indent=2)
 
     def get_points(self, user_id):
@@ -47,19 +47,28 @@ class PointData:
         self._save()
         return self.points[uid]
 
-    def can_draw_today(self, user_id):
+    # ✅ くじ用
+    def can_lottery_today(self, user_id):
         today = datetime.now(JST).strftime("%Y-%m-%d")
-        return self.last_draw.get(str(user_id)) != today
+        return self.last_lottery_draw.get(str(user_id)) != today
 
-    def mark_drew_today(self, user_id):
+    def mark_lottery_drew(self, user_id):
         today = datetime.now(JST).strftime("%Y-%m-%d")
-        self.last_draw[str(user_id)] = today
+        self.last_lottery_draw[str(user_id)] = today
         self._save()
 
-# ✅ グローバルインスタンス（起動時に自動読み込み）
+    # ✅ ボーナス用
+    def can_receive_bonus_today(self, user_id):
+        today = datetime.now(JST).strftime("%Y-%m-%d")
+        return self.last_bonus_receive.get(str(user_id)) != today
+
+    def mark_bonus_received(self, user_id):
+        today = datetime.now(JST).strftime("%Y-%m-%d")
+        self.last_bonus_receive[str(user_id)] = today
+        self._save()
+
 point_data = PointData()
 
-# ✅ くじの設定
 LOTTERY_PRIZES = [
     {"name": "🎖️ 1等", "points": 100, "rate": 0.05},
     {"name": "🥈 2等", "points": 75,  "rate": 0.10},
@@ -68,21 +77,19 @@ LOTTERY_PRIZES = [
     {"name": "🎀 5等", "points": 10,  "rate": 0.35},
 ]
 
-
 class LotteryPanelView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="🎰 くじを引く！", style=discord.ButtonStyle.primary, custom_id="lottery:draw")
+    @discord.ui.button(label="🗳くじを引く！", style=discord.ButtonStyle.primary, custom_id="lottery:draw")
     async def draw_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
-        if not point_data.can_draw_today(itx.user.id):
+        if not point_data.can_lottery_today(itx.user.id):
             await itx.response.send_message(
-                "❌ 今日は既に引いています。また明日お試しください！",
+                "❌ 今日は既にくじを引いています。また明日お試しください！",
                 ephemeral=True
             )
             return
 
-        # ✅ 確率に基づいて当選を決定
         import random
         r = random.random()
         cumulative = 0
@@ -95,8 +102,7 @@ class LotteryPanelView(discord.ui.View):
         if prize is None:
             prize = LOTTERY_PRIZES[-1]
 
-        # ✅ ポイント付与＆記録
-        point_data.mark_drew_today(itx.user.id)
+        point_data.mark_lottery_drew(itx.user.id)
         new_points = point_data.add_points(itx.user.id, prize["points"])
 
         await itx.response.send_message(
@@ -111,11 +117,10 @@ class LotteryPanelView(discord.ui.View):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
             return
-
         class LotteryEditModal(discord.ui.Modal, title="くじパネル編集"):
             title_in = discord.ui.TextInput(
                 label="タイトル",
-                default="🗳️1日1回！くじ引き",
+                default="🗳1日1回！くじ引き",
                 required=True
             )
             desc_in = discord.ui.TextInput(
@@ -133,15 +138,13 @@ class LotteryPanelView(discord.ui.View):
                 )
                 await m_itx.response.edit_message(embed=embed, view=LotteryPanelView())
                 await m_itx.followup.send("✅ くじパネルを更新しました", ephemeral=True)
-
         await itx.response.send_modal(LotteryEditModal())
-
 
 class PointCheckPanelView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="💰ポイントを確認", style=discord.ButtonStyle.success, custom_id="points:check")
+    @discord.ui.button(label="💳 ポイントを確認", style=discord.ButtonStyle.success, custom_id="points:check")
     async def check_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
         pts = point_data.get_points(itx.user.id)
         await itx.response.send_message(
@@ -154,7 +157,6 @@ class PointCheckPanelView(discord.ui.View):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
             return
-
         class PointEditModal(discord.ui.Modal, title="ポイントパネル編集"):
             title_in = discord.ui.TextInput(
                 label="タイトル",
@@ -175,9 +177,7 @@ class PointCheckPanelView(discord.ui.View):
                 )
                 await m_itx.response.edit_message(embed=embed, view=PointCheckPanelView())
                 await m_itx.followup.send("✅ ポイントパネルを更新しました", ephemeral=True)
-
         await itx.response.send_modal(PointEditModal())
-
 
 async def setup(tree):
     @tree.command(name="くじ引きパネル設置", description="くじ引きパネルを設置（オーナー専用）")
@@ -186,7 +186,7 @@ async def setup(tree):
             await itx.response.send_message("❌ オーナー専用コマンドです", ephemeral=True)
             return
         embed = discord.Embed(
-            title="🗳️1日1回！くじ引き",
+            title="🗳1日1回！くじ引き",
             description="⬇️のボタンを押して1日1回くじが引けます✨\n"
                         "🎖️1等:100pt / 🥈2等:75pt / 🥉3等:50pt / 🏅4等:25pt / 🎀5等:10pt",
             color=0xFFD700
@@ -199,8 +199,8 @@ async def setup(tree):
             await itx.response.send_message("❌ オーナー専用コマンドです", ephemeral=True)
             return
         embed = discord.Embed(
-            title="💰ポイント確認",
-            description="⬇️のボタンを押すと現在のポイントが確認できます✨",
+            title="💳 ポイント確認",
+            description="下のボタンを押すと現在のポイントが確認できます✨",
             color=0x2ECC71
         )
         await itx.response.send_message(embed=embed, view=PointCheckPanelView())
