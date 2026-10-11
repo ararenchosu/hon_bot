@@ -142,19 +142,19 @@ class OthelloPanelView(discord.ui.View):
                             ticket_channel=ticket_ch
                         )
 
-                        # ✅ 対戦終了時にIDを削除する処理を追加
+                        # ✅ 対戦終了時にIDを削除する処理
                         async def cleanup_and_close():
-                            """対戦終了時に呼び出し、active_gamesから削除してチャンネルを閉じる"""
                             active_games.discard(challenger.id)
                             active_games.discard(opponent.id)
+                            await ticket_ch.send("✅ 対戦終了！5秒後にこのチャンネルを削除します")
                             await asyncio.sleep(5)
                             try:
                                 await ticket_ch.delete()
                             except:
                                 pass
 
-                        # 終了時のクリーンアップ処理を登録
-                        game_view.on_game_end = cleanup_and_close
+                        # ✅ 変数名を統一：cleanup_callback に設定
+                        game_view.cleanup_callback = cleanup_and_close
 
                         embed = await game_view.build_embed()
                         game_view.main_message = await ticket_ch.send(
