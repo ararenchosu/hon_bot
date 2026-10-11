@@ -62,7 +62,7 @@ async def on_ready():
     # ✅ コマンド登録
     print("\n🔄 コマンド登録中...")
     await lottery_setup(tree)
-    print("  ✅ lottery_panel（くじ引き・ポイント確認）")
+    print("  ✅ lottery_panel → /くじ引きパネル設置 / /ポイント確認パネル設置")
     await othello.setup(tree)
     await othello_panel.setup(tree)
     await auth_panel.setup(tree)
@@ -72,32 +72,20 @@ async def on_ready():
     await welcome_leave.setup(bot)
     print("✅ 全コマンド登録完了")
 
-    # ✅ 登録済みコマンドを表示（これが本当の一覧です）
-    print("\n📋 登録されているコマンド：")
-    all_cmds = tree.get_commands()
-    for cmd in all_cmds:
-        print(f"   /{cmd.name} — {cmd.description}")
-    print(f"✅ 合計 {len(all_cmds)} 件\n")
+    # ✅ 登録確認
+    print("\n📋 登録済みコマンド一覧：")
+    for cmd in tree.get_commands():
+        print(f"   /{cmd.name}")
 
-    # ✅ ギルド同期（IDは正しいものを使用）
-    GUILD_ID = 1542788841465978880
-    print(f"🔄 ギルド {GUILD_ID} に反映中...")
-    
-    # force=True で強制的に上書き
-    synced = await tree.sync(guild=discord.Object(id=GUILD_ID))
-    
-    # ✅ ギルド側の実際のコマンドを取得して表示
-    guild = discord.Object(id=GUILD_ID)
-    guild_cmds = await tree.fetch_commands(guild=guild)
-    print(f"\n✅ サーバーに反映されたコマンド一覧（{len(guild_cmds)}件）：")
-    if not guild_cmds:
-        print("   ⚠️ まだ反映されていません。少し待ってから再度お試しください。")
-    for cmd in guild_cmds:
-        print(f"   /{cmd.name} — {cmd.description}")
-    print()
+    # ✅ グローバル同期（反映に少し時間がかかるが確実）
+    print("\n🔄 グローバル同期中...")
+    synced = await tree.sync()
+    print(f"✅ 同期完了！合計 {len(synced)} 件")
+    for cmd in synced:
+        print(f"   /{cmd.name}")
 
     # ✅ パネル復元
-    print("🔄 パネル復元中...")
+    print("\n🔄 パネル復元中...")
     call_saved = call_panel.get_latest_call_panel()
     if call_saved:
         await restore_panel(call_saved["channel_id"], call_saved["message_id"], call_panel.CallPanelView, bot)
@@ -110,7 +98,7 @@ async def on_ready():
     role_revoke_saved = revoke_panel.get_latest_role_revoke_panel()
     if role_revoke_saved:
         await restore_panel(role_revoke_saved["channel_id"], role_revoke_saved["message_id"], revoke_panel.RoleRevokePanelView)
-    print("✅ パネル復元完了\n")
+    print("✅ 起動完了\n")
 
 
 bot.run(BOT_TOKEN)
