@@ -7,6 +7,7 @@ from .othello_board import OthelloBoard
 
 active_games = set()
 
+
 class OthelloPanelView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -27,6 +28,7 @@ class OthelloPanelView(discord.ui.View):
                     min_values=1,
                     max_values=1
                 )
+
             async def callback(self, inter: discord.Interaction):
                 nonlocal selected_opponent
                 selected_opponent = self.values[0]
@@ -126,13 +128,12 @@ class OthelloPanelView(discord.ui.View):
                     @discord.ui.button(label="🎮 盤面表示", style=discord.ButtonStyle.primary)
                     async def show_board_btn(self, board_itx: discord.Interaction, btn):
                         await board_itx.response.defer()
-                        
+
                         active_games.add(challenger.id)
                         active_games.add(opponent.id)
-                        
+
                         game = type('Game', (), {'board': OthelloBoard()})()
-                        
-                        # ✅ 引数追加：result_channel_id, ticket_channel
+
                         game_view = OthelloView(
                             game=game,
                             player_black=challenger,
@@ -140,9 +141,23 @@ class OthelloPanelView(discord.ui.View):
                             result_channel_id=RESULT_CHANNEL_ID,
                             ticket_channel=ticket_ch
                         )
-                        
+
+                        # ✅ 対戦終了時にIDを削除する処理を追加
+                        async def cleanup_and_close():
+                            """対戦終了時に呼び出し、active_gamesから削除してチャンネルを閉じる"""
+                            active_games.discard(challenger.id)
+                            active_games.discard(opponent.id)
+                            await asyncio.sleep(5)
+                            try:
+                                await ticket_ch.delete()
+                            except:
+                                pass
+
+                        # 終了時のクリーンアップ処理を登録
+                        game_view.on_game_end = cleanup_and_close
+
                         embed = await game_view.build_embed()
-                        game_view.message = await ticket_ch.send(
+                        game_view.main_message = await ticket_ch.send(
                             embed=embed,
                             view=game_view
                         )
@@ -170,7 +185,6 @@ class OthelloPanelView(discord.ui.View):
             f"{opponent.mention}\n{challenger.mention} がオセロの対戦を申し込んでいます！\n⏰ 2分以内に「✅ 承認」または「❌ 拒否」を押してください。",
             view=ar_view
         )
-
         await ar_view.wait()
 
         if ar_view.final_decision is None:
@@ -189,7 +203,7 @@ class OthelloPanelView(discord.ui.View):
         class EditModal(discord.ui.Modal, title="パネル編集"):
             title_in = discord.ui.TextInput(label="タイトル", default="🎮 オセロで対戦しよう！")
             desc_in = discord.ui.TextInput(label="説明文", style=discord.TextStyle.long,
-                default="下のボタンを押して対戦相手を選んでください。\n承諾されると専用チャンネルが自動作成されます。")
+                                            default="下のボタンを押して対戦相手を選んでください。\n承諾されると専用チャンネルが自動作成されます。")
 
             async def on_submit(self, modal_itx: discord.Interaction):
                 embed = discord.Embed(title=str(self.title_in), description=str(self.desc_in), color=0x2ecc71)
