@@ -1,3 +1,30 @@
+# ============================================================
+# ✅ 最優先：PyNaCl を先に読み込んで discord.py に認識させる
+# ============================================================
+import sys
+import site
+
+# インストール先パスを確実に含める
+for p in site.getsitepackages():
+    if p not in sys.path:
+        sys.path.insert(0, p)
+
+try:
+    import nacl
+    print(f"✅ PyNaCl 強制読み込み成功: {nacl.__version__}")
+except Exception as e:
+    print(f"⚠️ PyNaCl 直接インポート失敗: {e}")
+    try:
+        # 最終手段：明示的にインポート
+        import nacl
+        print(f"✅ 再試行：PyNaCl 読み込み成功: {nacl.__version__}")
+    except Exception as e2:
+        print(f"❌ PyNaCl 読み込み失敗: {e2}")
+        print("💡 FadeHostコンソールで「pip install discord.py[voice]」を実行してください")
+
+# ============================================================
+# ✅ ここから元のコード
+# ============================================================
 import discord
 from discord import app_commands
 import os
@@ -29,7 +56,6 @@ intents.members = True
 bot = discord.Client(intents=intents)
 tree = app_commands.CommandTree(bot)
 
-
 async def restore_panel(channel_id, message_id, ViewClass, *view_args):
     try:
         channel = bot.get_channel(channel_id)
@@ -42,7 +68,6 @@ async def restore_panel(channel_id, message_id, ViewClass, *view_args):
     except Exception as e:
         print(f"⚠️ 復元失敗: {e}")
         return False
-
 
 @bot.event
 async def on_ready():
@@ -110,7 +135,7 @@ async def on_ready():
     role_revoke_saved = revoke_panel.get_latest_role_revoke_panel()
     if role_revoke_saved:
         await restore_panel(role_revoke_saved["channel_id"], role_revoke_saved["message_id"], revoke_panel.RoleRevokePanelView)
-    print("✅ 起動完了\n")
 
+    print("✅ 起動完了\n")
 
 bot.run(BOT_TOKEN)
