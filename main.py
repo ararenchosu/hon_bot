@@ -10,7 +10,8 @@ from features.blackjack_panel import setup as bj_setup
 from features.highlow_panel import setup as hl_setup
 from features.point_admin_panel import setup as point_admin_setup
 import features.embed_sender as embed_sender
-import features.clear_messages as clear_messages  # ✅ 追加
+import features.clear_messages as clear_messages
+import features.moderation_panel as moderation_panel  # ✅ 追加
 import features.othello as othello
 import features.othello_panel as othello_panel
 import features.auth_panel as auth_panel
@@ -60,6 +61,7 @@ async def on_ready():
         from features.blackjack_panel import BlackjackPanelView
         from features.highlow_panel import HighLowPanelView
         from features.point_admin_panel import PointAdminView
+        from features.moderation_panel import ModerationPanelView  # ✅ 追加
         
         bot.add_view(LotteryPanelView())
         bot.add_view(PointCheckPanelView())
@@ -68,6 +70,7 @@ async def on_ready():
         bot.add_view(BlackjackPanelView())
         bot.add_view(HighLowPanelView())
         bot.add_view(PointAdminView())
+        bot.add_view(ModerationPanelView())  # ✅ 追加
         bot.add_view(othello_panel.OthelloPanelView())
         bot.add_view(call_panel.CallPanelView(bot))
         bot.add_view(auth_panel.AuthPanelView())
@@ -94,8 +97,10 @@ async def on_ready():
     print("  ✅ point_admin_panel → /ポイント付与パネル設置")
     await embed_sender.setup(tree)
     print("  ✅ embed_sender → /emb")
-    await clear_messages.setup(tree)  # ✅ 追加
+    await clear_messages.setup(tree)
     print("  ✅ clear_messages → /メッセージ全削除")
+    await moderation_panel.setup(tree)  # ✅ 追加
+    print("  ✅ moderation_panel → /管理パネル設置")
     await othello.setup(tree)
     await othello_panel.setup(tree)
     await auth_panel.setup(tree)
