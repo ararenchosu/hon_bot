@@ -736,3 +736,95 @@ async def setup(tree: app_commands.CommandTree):
         )
         await itx.response.send_message(embed=embed, view=SecurityMainView())
         await itx.followup.send("✅ 治安パネル設置完了", ephemeral=True)
+# ========== ⑨ 禁止ワード自動検知・監視 ==========
+async def check_forbidden_words(message: discord.Message):
+    """メッセージをスキャンし、禁止ワードがあれば削除・通知"""
+    
+    # ボット自身のメッセージは無視
+    if message.author.bot:
+        return
+    
+    # 禁止ワード監視がOFFの場合は何もしない
+    if get_setting('word_monitor') != 'on':
+        return
+    
+    # 禁止ワード一覧取得
+    forbidden_list = get_forbidden_words()
+    if not forbidden_list:
+        return
+    
+    content = message.content.lower()
+    detected_word = None
+    
+    # ワードチェック
+    for wid, word, match_type, level in forbidden_list:
+        word_lower = word.lower()
+        if match_type == 'partial':
+            if word_lower in content:
+                detected_word = word
+                break
+        elif match_type == 'exact':
+            if word_lower == content.strip().lower():
+                detected_word = word
+                break
+    
+    if not detected_word:
+        return
+    
+    # ✅ 検知：メッセージ削除
+    try:
+        await message.delete()
+    except Exception as e:
+        print(f"⚠️ メッセージ削除失敗：{e}")
+        return
+    
+    # ✅ ログ記録
+    add_security_log(
+        message.author.id,
+        str(message.author),
+        "禁止ワード検知",
+        f"ワード：{detected_word}\n内容：{message.content}",
+        None, None
+    )
+    
+    # ✅ その場に証明コメント送信（5秒後に削除）
+    notice_embed = discord.Embed(
+        title="⚠️ 禁止ワードを検知しました",
+        description=f"{message.author.mention} のメッセージを削除しました。\n理由：禁止ワード「`{detected_word}`」を検知",
+        color=0xF39C12,
+        timestamp=datetime.now(JST)
+    )
+    try:
+        reply = await message.channel.send(embed=notice_embed, delete_after=5.0)
+    except:
+        pass
+    
+    # ✅ 対象者にDMで警告送信
+    dm_embed = discord.Embed(
+        title="⚠️ 警告：サーバールール違反",
+        description=f"""あなたの送信したメッセージに禁止ワードが含まれていたため削除しました。
+
+🔍 検知されたワード：`{detected_word}`
+📝 送信された内容：{message.content}
+
+今後このような行為が続く場合、ミュートまたはBANとなる場合があります。
+サーバールールを守ってご利用ください。""",
+        color=0xE74C3C,
+        timestamp=datetime.now(JST)
+    )
+    try:
+        await message.author.send(embed=dm_embed)
+    except Exception as e:
+        print(f"ℹ️ DM送信不可：{message.author} / {e}")
+    
+    # ✅ 監視ログチャンネルにも記録
+    log_embed = discord.Embed(
+        title="🔍 禁止ワード検知",
+        description=f"""ユーザー：{message.author.mention}
+チャンネル：{message.channel.mention}
+検知ワード：`{detected_word}`
+送信内容：{message.content}""",
+        color=0xE74C3C,
+        timestamp=datetime.now(JST)
+    )
+    await send_security_log(message.guild, "🔍 禁止ワード検知", log_embed.description, 0xE74C3C)
