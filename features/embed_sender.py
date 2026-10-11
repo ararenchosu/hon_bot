@@ -2,7 +2,6 @@ import discord
 from discord import app_commands
 from core.common import is_owner
 
-
 async def setup(tree):
     @tree.command(name="emb", description="埋め込みメッセージを送信（オーナー専用）")
     @app_commands.describe(title="タイトル", desc="説明文", color="色コード（例：ff0000=赤）")
