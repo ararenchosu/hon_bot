@@ -4,10 +4,6 @@ import asyncio
 import random
 from datetime import datetime, timedelta, timezone
 from core.common import is_owner
-import gtts
-import tempfile
-import os
-# 以降はそのまま
 
 JST = timezone(timedelta(hours=9))
 
@@ -32,72 +28,6 @@ def format_time(seconds: int) -> str:
 
 def jst_str(timestamp: float) -> str:
     return datetime.fromtimestamp(timestamp, JST).strftime("%H:%M:%S")
-
-def make_tts_audio(text: str) -> str:
-    """TTSを一時ファイルに出力し、ファイルパスを返す"""
-    tts = gtts.gTTS(text=text, lang="ja")
-    tmp = tempfile.NamedTemporaryFile(suffix=".mp3", delete=False)
-    tts.save(tmp.name)
-    tmp.close()
-    return tmp.name
-
-async def speak_in_channel(voice_channel, text: str):
-    """指定チャンネルで読み上げ - 完全安定版"""
-    if not voice_channel:
-        print("⚠️ チャンネルがNoneです")
-        return
-    vc = None
-    try:
-        client = voice_channel.guild._state._get_client()
-        print(f"🔊 読み上げ開始: {text} / チャンネル: {voice_channel.name}")
-
-        # 既接続を取得
-        for conn in client.voice_clients:
-            if conn.guild.id == voice_channel.guild.id:
-                vc = conn
-                break
-
-        # 未接続なら接続
-        if not vc or not vc.is_connected():
-            print(f"🔊 チャンネルに接続します...")
-            vc = await voice_channel.connect()
-            print(f"✅ 接続完了: {voice_channel.name}")
-        elif vc.channel.id != voice_channel.id:
-            print(f"🔊 チャンネルを移動: {vc.channel.name} → {voice_channel.name}")
-            await vc.move_to(voice_channel)
-
-        # 再生中なら停止
-        if vc.is_playing():
-            vc.stop()
-
-        # 音声生成・再生
-        audio_path = await asyncio.to_thread(make_tts_audio, text)
-        source = discord.FFmpegPCMAudio(audio_path)
-        vc.play(source)
-        print(f"🔊 再生中: {text}")
-
-        while vc.is_playing():
-            await asyncio.sleep(0.3)
-
-        # 一時ファイル削除
-        try:
-            os.remove(audio_path)
-        except:
-            pass
-
-        # 自分以外に誰もいなければ切断
-        if len(voice_channel.members) == 1:
-            await vc.disconnect()
-            print(f"🔌 誰もいないので切断しました")
-
-    except Exception as e:
-        print(f"⚠️ 音声読み上げエラー: {type(e).__name__}: {e}")
-        # エラー時に切断してリセット
-        try:
-            if vc and vc.is_connected():
-                await vc.disconnect()
-        except:
-            pass
 
 async def send_create_log(client: discord.Client, channel_name: str, creator: discord.User):
     log_ch = client.get_channel(LOG_CREATE_DELETE_CHANNEL)
@@ -267,7 +197,7 @@ async def watch_channel(channel: discord.VoiceChannel):
                     "stay_sec": None
                 }
                 await send_join_log(client, channel_name, member, now_ts)
-                asyncio.create_task(speak_in_channel(ch, f"{member.display_name}さんが入室しました"))
+                # ✅ 読み上げなし
             last_members = current_members
             if len(current_members) > 0:
                 break
@@ -279,9 +209,6 @@ async def watch_channel(channel: discord.VoiceChannel):
                 print(f"⏰ 2分経過・誰も入室なし → 削除: {channel_name}")
                 records = list(active_channels[channel_id]["member_records"].values())
                 await send_delete_summary_log(client, channel_name, "2分以内に入室がないため", records)
-                for vc in client.voice_clients:
-                    if vc.channel and vc.channel.id == channel_id:
-                        await vc.disconnect()
                 await ch.delete(reason="2分以内に入室がないため")
             return
 
@@ -306,7 +233,7 @@ async def watch_channel(channel: discord.VoiceChannel):
                     "stay_sec": None
                 }
                 await send_join_log(client, channel_name, member, now_ts)
-                asyncio.create_task(speak_in_channel(ch, f"{member.display_name}さんが入室しました"))
+                # ✅ 読み上げなし
             # 退出
             for member in last_members - current_members:
                 if member.bot:
@@ -319,7 +246,7 @@ async def watch_channel(channel: discord.VoiceChannel):
                     rec["leave_ts"] = leave_ts
                     rec["stay_sec"] = stay_sec
                     await send_leave_log(client, channel_name, member, leave_ts, stay_sec)
-                    asyncio.create_task(speak_in_channel(ch, f"{member.display_name}さんが退出しました"))
+                    # ✅ 読み上げなし
             last_members = current_members
             # 0人になったら5秒待って削除
             if len(current_members) == 0:
@@ -329,9 +256,6 @@ async def watch_channel(channel: discord.VoiceChannel):
                 if ch and len(ch.members) == 0:
                     records = list(active_channels[channel_id]["member_records"].values())
                     await send_delete_summary_log(client, channel_name, "誰もいなくなったため自動削除", records)
-                    for vc in client.voice_clients:
-                        if vc.channel and vc.channel.id == channel_id:
-                            await vc.disconnect()
                     await ch.delete(reason="誰もいないため自動削除")
                     return
             await asyncio.sleep(1)
