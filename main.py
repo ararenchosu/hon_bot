@@ -3,7 +3,6 @@ from discord import app_commands
 import os
 from core.database import init_db
 
-# ✅ インポート確認
 from features.lottery_panel import setup as lottery_setup
 import features.othello as othello
 import features.othello_panel as othello_panel
@@ -28,7 +27,6 @@ intents.members = True
 bot = discord.Client(intents=intents)
 tree = app_commands.CommandTree(bot)
 
-# ========== 復元共通処理 ==========
 async def restore_panel(channel_id, message_id, ViewClass, *view_args):
     try:
         channel = bot.get_channel(channel_id)
@@ -39,14 +37,14 @@ async def restore_panel(channel_id, message_id, ViewClass, *view_args):
         await msg.edit(view=ViewClass(*view_args))
         return True
     except Exception as e:
-        print(f"⚠️ 復元失敗（再設置推奨）ch={channel_id}, msg={message_id}: {e}")
+        print(f"⚠️ 復元失敗: {e}")
         return False
 
 
 @bot.event
 async def on_ready():
     print(f"✅ ログイン：{bot.user}")
-    
+
     # ✅ View登録
     try:
         from features.lottery_panel import LotteryPanelView, PointCheckPanelView
@@ -60,6 +58,22 @@ async def on_ready():
         print("✅ 全View登録完了")
     except Exception as e:
         print(f"⚠️ View登録エラー: {e}")
+
+    # ✅ コマンド登録
+    await lottery_setup(tree)
+    await othello.setup(tree)
+    await othello_panel.setup(tree)
+    await auth_panel.setup(tree)
+    await role_panel.setup(tree)
+    await revoke_panel.setup(tree)
+    await call_panel.setup(tree, bot)
+    await welcome_leave.setup(bot)
+    print("✅ コマンド登録完了")
+
+    # ✅ ギルド同期
+    GUILD_ID = 1542788841465978880
+    await tree.sync(guild=discord.Object(id=GUILD_ID))
+    print(f"✅ コマンド同期完了 / ギルドID: {GUILD_ID}")
 
     # ✅ パネル復元
     print("🔄 パネル復元中...")
@@ -75,22 +89,6 @@ async def on_ready():
     role_revoke_saved = revoke_panel.get_latest_role_revoke_panel()
     if role_revoke_saved:
         await restore_panel(role_revoke_saved["channel_id"], role_revoke_saved["message_id"], revoke_panel.RoleRevokePanelView)
-
-    # ✅ コマンド登録
-    await lottery_setup(tree)
-    await othello.setup(tree)
-    await othello_panel.setup(tree)
-    await auth_panel.setup(tree)
-    await role_panel.setup(tree)
-    await revoke_panel.setup(tree)
-    await call_panel.setup(tree, bot)
-    await welcome_leave.setup(bot)
-    print("✅ コマンド登録完了")
-
-    # ✅ ギルド同期（ここが重要！）
-    GUILD_ID = 1542788841465978880
-    await tree.sync(guild=discord.Object(id=GUILD_ID))
-    print(f"✅ コマンド同期完了（ギルドID: {GUILD_ID}）")
 
 
 bot.run(BOT_TOKEN)
