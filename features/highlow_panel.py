@@ -6,9 +6,12 @@ import os
 from datetime import datetime, timedelta, timezone
 from core.common import is_owner
 
+# ===== 統計用共通モジュール読み込み =====
+from core.game_stats import increment
+
 JST = timezone(timedelta(hours=9))
 DATA_FILE = "kn_points_data.json"
-HL_RESULT_CHANNEL_ID = 1558772472881488004
+HL_RESULT_CHANNEL_ID = 1558772472881488004  # チャンネルID
 
 RANKS = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"]
 CARD_VALUES = {r: i+2 for i, r in enumerate(RANKS)}
@@ -79,6 +82,11 @@ async def send_result_embed(client, user, first_card, next_card, choice, result_
         embed.add_field(name="備考", value="お試しモード\nポイントの増減なし", inline=False)
     embed.set_thumbnail(url=user.display_avatar.url)
     await channel.send(embed=embed)
+
+    # ===== チャンネル名更新 =====
+    count = increment("highlow")
+    await channel.edit(name=f"📈・ハイロー・{count}回", reason="プレイ回数更新")
+
 
 games = {}
 
@@ -231,6 +239,7 @@ class HighLowGameView(discord.ui.View):
         )
         del games[self.user_id]
 
+
 class HighLowPanelView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -255,6 +264,7 @@ class HighLowPanelView(discord.ui.View):
     async def hl100(self, itx: discord.Interaction, btn: discord.ui.Button):
         await start_game(itx, 100)
 
+
 async def start_game(itx, bet, is_free=False):
     pts = get_points(itx.user.id)
     if itx.user.id in games:
@@ -263,7 +273,6 @@ async def start_game(itx, bet, is_free=False):
     if not is_free and pts < bet:
         await itx.response.send_message(f"❌ ポイントが足りません！（所持：{pts}P / 必要：{bet}P）", ephemeral=True)
         return
-
     view = HighLowGameView(itx.user.id, bet, is_free=is_free)
     
     mode_text = "🍀 お試しモード\nいくらでも練習可能" if is_free else (
@@ -281,6 +290,7 @@ async def start_game(itx, bet, is_free=False):
     embed.add_field(name="予想してください", value="下から選んでください", inline=False)
     
     await itx.response.send_message(embed=embed, view=view, ephemeral=True)
+
 
 async def setup(tree: app_commands.CommandTree):
     @tree.command(name="ハイローパネル設置", description="ハイ＆ローパネル設置（オーナー専用）")
