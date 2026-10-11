@@ -1,27 +1,10 @@
 import discord
 from discord import app_commands
 import os
-from core.database import init_db  # ← 追加
-# 例：main.py などに記載
+from core.database import init_db
+
+# 各機能インポート
 from lottery_panel import setup as lottery_setup
-await lottery_setup(tree)
-
-BOT_TOKEN = os.getenv("DISCORD_TOKEN")
-if not BOT_TOKEN:
-    print("❌ 環境変数 DISCORD_TOKEN が設定されていません")
-    exit(1)
-print(f"✅ トークン読み込み完了：{BOT_TOKEN[:10]}...")
-
-intents = discord.Intents.default()
-intents.message_content = True
-intents.members = True
-bot = discord.Client(intents=intents)
-tree = app_commands.CommandTree(bot)
-
-# ✅ DB初期化：起動時に必ず実行
-init_db()
-
-# ===== 全機能読み込み =====
 import features.othello as othello
 import features.othello_panel as othello_panel
 import features.auth_panel as auth_panel
@@ -29,6 +12,22 @@ import features.role_panel as role_panel
 import features.revoke_panel as revoke_panel
 import features.call_panel as call_panel
 import features.welcome_leave as welcome_leave
+
+BOT_TOKEN = os.getenv("DISCORD_TOKEN")
+if not BOT_TOKEN:
+    print("❌ 環境変数 DISCORD_TOKEN が設定されていません")
+    exit(1)
+print(f"✅ トークン読み込み完了：{BOT_TOKEN[:10]}...")
+
+# ✅ DB初期化：起動時に必ず実行
+init_db()
+
+intents = discord.Intents.default()
+intents.message_content = True
+intents.members = True
+
+bot = discord.Client(intents=intents)
+tree = app_commands.CommandTree(bot)
 
 # ========== 復元共通処理 ==========
 async def restore_panel(channel_id, message_id, ViewClass, *view_args):
@@ -44,10 +43,15 @@ async def restore_panel(channel_id, message_id, ViewClass, *view_args):
         print(f"⚠️ 復元失敗（再設置推奨）ch={channel_id}, msg={message_id}: {e}")
         return False
 
+
 @bot.event
 async def on_ready():
     # ✅ 永続View登録
     try:
+        from lottery_panel import LotteryPanelView, PointCheckPanelView
+        
+        bot.add_view(LotteryPanelView())
+        bot.add_view(PointCheckPanelView())
         bot.add_view(othello_panel.OthelloPanelView())
         bot.add_view(call_panel.CallPanelView(bot))
         bot.add_view(auth_panel.AuthPanelView())
@@ -80,7 +84,8 @@ async def on_ready():
         await restore_panel(role_revoke_saved["channel_id"], role_revoke_saved["message_id"],
                             revoke_panel.RoleRevokePanelView)
 
-    # ✅ コマンド登録
+    # ✅ コマンド登録（on_ready内にまとめる）
+    await lottery_setup(tree)
     await othello.setup(tree)
     await othello_panel.setup(tree)
     await auth_panel.setup(tree)
@@ -95,5 +100,6 @@ async def on_ready():
     
     print(f"✅ 起動完了：{bot.user}")
     print("✅ 全コマンド同期完了")
+
 
 bot.run(BOT_TOKEN)
