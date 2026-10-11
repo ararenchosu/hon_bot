@@ -4,6 +4,7 @@ from .othello_board import OthelloBoard
 BLACK = "black"
 WHITE = "white"
 
+
 class OthelloView(discord.ui.View):
     def __init__(self, game, player_black, player_white, result_channel_id=None, ticket_channel=None):
         super().__init__(timeout=None)
@@ -15,30 +16,36 @@ class OthelloView(discord.ui.View):
         self.result_channel_id = result_channel_id
         self.ticket_channel = ticket_channel
         self.force_ended = False
-        # 選択状態：どの列を選んでいるか
+        self.game_completed = False  # ✅ 追加：通常終了も含む
         self.selected_col = None
 
     async def build_embed(self):
         b, w = self.board.count()
         if self.selected_col is None:
-            turn_text = "⚫ 黒の番です — a～h から列を選んでください" if self.board.current == BLACK else "⚪ 白の番です — a～h から列を選んでください"
+            turn_text = (
+                "⚫ 黒の番です — a～h から列を選んでください"
+                if self.board.current == BLACK
+                else "⚪ 白の番です — a～h から列を選んでください"
+            )
         else:
-            turn_text = f"👇 {chr(ord('ａ')+self.selected_col)}列を選択中 — 数字(1～8)で行を選んでください"
+            turn_text = f"👇 {chr(ord('ａ') + self.selected_col)}列を選択中 — 数字(1～8)で行を選んでください"
+
         embed = discord.Embed(title="🔳 オセロ", description=self.board.render(), color=0x222222)
         embed.add_field(
             name="状況",
             value=f"黒：{b}　白：{w}\n{turn_text}",
-            inline=False
+            inline=False,
         )
         embed.add_field(
             name="プレイヤー",
             value=f"{self.player_black.mention} 黒\n{self.player_white.mention} 白",
-            inline=False
+            inline=False,
         )
         return embed
 
     def check_turn(self, interaction):
-        if self.force_ended:
+        # ✅ 既に終了していたら拒否
+        if self.force_ended or self.game_completed:
             return False
         if self.board.current == BLACK and interaction.user.id != self.player_black.id:
             return False
@@ -46,7 +53,7 @@ class OthelloView(discord.ui.View):
             return False
         return True
 
-    # ===== 1行目：a～e =====
+    # ===== 列選択ボタン =====
     @discord.ui.button(label="ａ", style=discord.ButtonStyle.secondary, row=0)
     async def col_a(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not self.check_turn(interaction):
@@ -87,7 +94,6 @@ class OthelloView(discord.ui.View):
         self.selected_col = 4
         await interaction.response.edit_message(embed=await self.build_embed())
 
-    # ===== 2行目：f～h + 強制終了 =====
     @discord.ui.button(label="ｆ", style=discord.ButtonStyle.secondary, row=1)
     async def col_f(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not self.check_turn(interaction):
@@ -114,14 +120,15 @@ class OthelloView(discord.ui.View):
 
     @discord.ui.button(label="⚠️ 強制終了", style=discord.ButtonStyle.danger, row=1)
     async def force_end_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
-        if self.force_ended:
-            await interaction.response.send_message("❌ 既に終了しています", ephemeral=True)
+        if self.force_ended or self.game_completed:
+            await interaction.response.send_message("❌ 既に終了しています。新しく対戦を開始してください。", ephemeral=True)
             return
         if interaction.user.id not in (self.player_black.id, self.player_white.id):
             await interaction.response.send_message("❌ 対戦者のみ実行できます", ephemeral=True)
             return
 
         self.force_ended = True
+        self.game_completed = True  # ✅ 両方のフラグを立てる
         self.disable_all_items()
 
         b, w = self.board.count()
@@ -132,59 +139,76 @@ class OthelloView(discord.ui.View):
         else:
             result_text = "🤝 引き分け！"
 
-        embed = discord.Embed(title="🔳 オセロ【強制終了】", description=self.board.render(), color=0xff4444)
-        embed.add_field(name="途中終了 状況", value=f"黒：{b}　白：{w}\n{result_text}", inline=False)
-        embed.add_field(name="プレイヤー", value=f"{self.player_black.mention} 黒\n{self.player_white.mention} 白", inline=False)
+        embed = discord.Embed(title="🔳 オセロ【強制終了】", description=self.board.render(), color=0xFF4444)
+        embed.add_field(
+            name="途中終了 状況",
+            value=f"黒：{b}　白：{w}\n{result_text}",
+            inline=False,
+        )
+        embed.add_field(
+            name="プレイヤー",
+            value=f"{self.player_black.mention} 黒\n{self.player_white.mention} 白",
+            inline=False,
+        )
 
         await interaction.response.edit_message(embed=embed, view=self)
-
-        if self.ticket_channel:
-            await self.ticket_channel.send(f"⚠️ {interaction.user.mention} により対戦が強制終了されました。\n3秒後にこのチャンネルを削除します…")
 
         if self.result_channel_id and self.ticket_channel:
             guild = self.ticket_channel.guild
             result_ch = guild.get_channel(self.result_channel_id)
             if result_ch:
-                res_embed = discord.Embed(title="⚠️ オセロ対戦【途中終了】", color=0xff4444)
+                res_embed = discord.Embed(title="⚠️ オセロ対戦【途中終了】", color=0xFF4444)
                 res_embed.add_field(name="対戦者", value=f"⚫ {self.player_black.mention}\n⚪ {self.player_white.mention}", inline=False)
                 res_embed.add_field(name="最終スコア", value=f"黒：{b}　白：{w}", inline=False)
                 res_embed.add_field(name="結果", value=result_text, inline=False)
                 res_embed.set_footer(text=f"終了者：{interaction.user}")
                 await result_ch.send(embed=res_embed)
 
-        import asyncio
-        await asyncio.sleep(3)
         if self.ticket_channel:
+            await self.ticket_channel.send(
+                f"⚠️ {interaction.user.mention} により対戦が強制終了されました。\n"
+                "3秒後にこのチャンネルを削除します…"
+            )
+            import asyncio
+            await asyncio.sleep(3)
             try:
                 await self.ticket_channel.delete()
             except:
                 pass
 
-    # ===== 行選択ボタン（列選択後に表示） =====
+    # ===== 行選択ボタン =====
     @discord.ui.button(label="1", style=discord.ButtonStyle.primary, row=2)
     async def row1(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self._place_stone(interaction, 0)
+
     @discord.ui.button(label="2", style=discord.ButtonStyle.primary, row=2)
     async def row2(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self._place_stone(interaction, 1)
+
     @discord.ui.button(label="3", style=discord.ButtonStyle.primary, row=2)
     async def row3(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self._place_stone(interaction, 2)
+
     @discord.ui.button(label="4", style=discord.ButtonStyle.primary, row=2)
     async def row4(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self._place_stone(interaction, 3)
+
     @discord.ui.button(label="5", style=discord.ButtonStyle.primary, row=2)
     async def row5(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self._place_stone(interaction, 4)
+
     @discord.ui.button(label="6", style=discord.ButtonStyle.primary, row=3)
     async def row6(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self._place_stone(interaction, 5)
+
     @discord.ui.button(label="7", style=discord.ButtonStyle.primary, row=3)
     async def row7(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self._place_stone(interaction, 6)
+
     @discord.ui.button(label="8", style=discord.ButtonStyle.primary, row=3)
     async def row8(self, interaction: discord.Interaction, button: discord.ui.Button):
         await self._place_stone(interaction, 7)
+
     @discord.ui.button(label="✖ キャンセル", style=discord.ButtonStyle.secondary, row=3)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not self.check_turn(interaction):
@@ -194,6 +218,13 @@ class OthelloView(discord.ui.View):
         await interaction.response.edit_message(embed=await self.build_embed())
 
     async def _place_stone(self, interaction, row):
+        # ✅ 終了済みなら弾く
+        if self.force_ended or self.game_completed:
+            await interaction.response.send_message(
+                "❌ この対戦は既に終了しています。新しく対戦を開始してください。",
+                ephemeral=True,
+            )
+            return
         if not self.check_turn(interaction):
             await interaction.response.send_message("自分の番ではありません", ephemeral=True)
             return
@@ -206,7 +237,6 @@ class OthelloView(discord.ui.View):
 
         if not self.board.put(row, col):
             await interaction.response.send_message("❌ そこには置けません", ephemeral=True)
-            # 盤面は更新せず、状態はそのまま
             await interaction.response.edit_message(embed=await self.build_embed())
             return
 
@@ -218,6 +248,7 @@ class OthelloView(discord.ui.View):
         new_embed = await self.build_embed()
 
         if self.board.is_game_over():
+            self.game_completed = True  # ✅ 通常終了フラグ
             b, w = self.board.count()
             if b > w:
                 result = f"⚫ {self.player_black.mention} の勝ち！"
@@ -226,14 +257,19 @@ class OthelloView(discord.ui.View):
             else:
                 result = "🤝 引き分け！"
 
-            new_embed.set_field_at(0, name="🏆 対戦結果", value=f"黒：{b}　白：{w}\n{result}", inline=False)
+            new_embed.set_field_at(
+                0,
+                name="🏆 対戦結果",
+                value=f"黒：{b}　白：{w}\n{result}",
+                inline=False,
+            )
             self.disable_all_items()
 
             if self.result_channel_id and self.ticket_channel:
                 guild = self.ticket_channel.guild
                 result_ch = guild.get_channel(self.result_channel_id)
                 if result_ch:
-                    res_embed = discord.Embed(title="🎮 オセロ対戦結果", color=0x2ecc71)
+                    res_embed = discord.Embed(title="🎮 オセロ対戦結果", color=0x2ECC71)
                     res_embed.add_field(name="対戦者", value=f"⚫ {self.player_black.mention}\n⚪ {self.player_white.mention}", inline=False)
                     res_embed.add_field(name="最終スコア", value=f"黒：{b}　白：{w}", inline=False)
                     res_embed.add_field(name="結果", value=result, inline=False)
