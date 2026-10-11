@@ -6,9 +6,12 @@ import os
 from datetime import datetime, timedelta, timezone
 from core.common import is_owner
 
+# ===== 統計用共通モジュール読み込み =====
+from core.game_stats import increment
+
 JST = timezone(timedelta(hours=9))
 DATA_FILE = "kn_points_data.json"
-BJ_RESULT_CHANNEL_ID = 1558770503261491311  # ✅ 指定されたチャンネル
+BJ_RESULT_CHANNEL_ID = 1558770503261491311  # チャンネルID
 
 # ===== カード定義 =====
 SUITS = ["♠", "♥", "♦", "♣"]
@@ -67,9 +70,11 @@ async def send_result_embed(client, user, dealer_cards, player_cards, result_tex
     if not channel:
         print(f"⚠️ 結果チャンネルが見つかりません: {BJ_RESULT_CHANNEL_ID}")
         return
+
     dealer_str = " ".join(f"{s}{r}" for s, r in dealer_cards)
     player_str = " ".join(f"{s}{r}" for s, r in player_cards)
     title = "🃏 ブラックジャック結果（お試し）" if is_free else "🃏 ブラックジャック結果"
+    
     embed = discord.Embed(
         title=title,
         description=f"{user.mention} が対戦しました！",
@@ -88,6 +93,11 @@ async def send_result_embed(client, user, dealer_cards, player_cards, result_tex
     embed.set_thumbnail(url=user.display_avatar.url)
     await channel.send(embed=embed)
 
+    # ===== チャンネル名更新 =====
+    count = increment("blackjack")
+    await channel.edit(name=f"🃏・ブラックジャック・{count}回", reason="プレイ回数更新")
+
+
 # ===== ゲーム状態管理 =====
 games = {}
 
@@ -103,7 +113,6 @@ class BlackjackGameView(discord.ui.View):
         self.player_hand = [deck.pop(), deck.pop()]
         self.doubled = False
         games[user_id] = self
-
         if is_blackjack(self.player_hand):
             self.disable_all_items()
 
@@ -122,7 +131,6 @@ class BlackjackGameView(discord.ui.View):
         dealer_hidden = len(self.player_hand) == 2 and not self.doubled
         dealer_total = hand_total(self.dealer_hand) if not dealer_hidden else "?"
         mode_text = "🍀 お試しモード" if self.is_free else f"賭け：{self.bet}P"
-
         embed = discord.Embed(
             title="🃏 ブラックジャック",
             description=mode_text,
@@ -130,7 +138,6 @@ class BlackjackGameView(discord.ui.View):
         )
         embed.add_field(name="ディーラー", value=f"{self.hand_str(self.dealer_hand, dealer_hidden)}\n合計: {dealer_total}", inline=False)
         embed.add_field(name="あなた", value=f"{self.hand_str(self.player_hand)}\n合計: {player_total}", inline=False)
-
         if itx:
             await itx.response.edit_message(embed=embed, view=self)
 
@@ -140,7 +147,6 @@ class BlackjackGameView(discord.ui.View):
         player_total = hand_total(self.player_hand)
         dealer_total = hand_total(self.dealer_hand)
         mode_text = "🍀 お試しモード" if self.is_free else f"賭け：{self.bet}P → {result_text}"
-
         embed = discord.Embed(
             title="🃏 ブラックジャック",
             description=mode_text,
@@ -152,7 +158,6 @@ class BlackjackGameView(discord.ui.View):
         if not self.is_free:
             embed.add_field(name="変動", value=f"{change:+d}P", inline=True)
             embed.add_field(name="所持P", value=f"{new_total}P", inline=True)
-
         await itx.response.edit_message(embed=embed, view=self)
         await send_result_embed(
             itx.client, itx.user,
@@ -170,10 +175,8 @@ class BlackjackGameView(discord.ui.View):
         if self.doubled:
             await itx.response.send_message("❌ ダブル後は追加できません", ephemeral=True)
             return
-
         self.player_hand.append(self.deck.pop())
         total = hand_total(self.player_hand)
-
         if total > 21:
             await self.finish_game(itx, "バースト！負け", -self.bet if not self.is_free else 0)
         elif total == 21:
@@ -186,13 +189,10 @@ class BlackjackGameView(discord.ui.View):
         if itx and itx.user.id != self.user_id:
             await itx.response.send_message("❌ 自分のゲームではありません", ephemeral=True)
             return
-
         while hand_total(self.dealer_hand) < 17:
             self.dealer_hand.append(self.deck.pop())
-
         p_total = hand_total(self.player_hand)
         d_total = hand_total(self.dealer_hand)
-
         if d_total > 21 or p_total > d_total:
             if is_blackjack(self.player_hand):
                 result_text = "🎉 ブラックジャック！勝ち"
@@ -206,7 +206,6 @@ class BlackjackGameView(discord.ui.View):
         else:
             result_text = "引き分け"
             change = 0
-
         if itx:
             await self.finish_game(itx, result_text, change)
 
@@ -225,16 +224,15 @@ class BlackjackGameView(discord.ui.View):
         if pts < self.bet:
             await itx.response.send_message("❌ ポイントが足りません", ephemeral=True)
             return
-
         self.bet *= 2
         self.doubled = True
         self.player_hand.append(self.deck.pop())
         total = hand_total(self.player_hand)
-
         if total > 21:
             await self.finish_game(itx, "バースト！負け", -self.bet)
         else:
             await self.stand(itx, None)
+
 
 class BlackjackPanelView(discord.ui.View):
     def __init__(self):
@@ -256,6 +254,7 @@ class BlackjackPanelView(discord.ui.View):
     async def bj100(self, itx: discord.Interaction, btn: discord.ui.Button):
         await start_game(itx, 100)
 
+
 async def start_game(itx, bet, is_free=False):
     pts = get_points(itx.user.id)
     if itx.user.id in games:
@@ -264,9 +263,8 @@ async def start_game(itx, bet, is_free=False):
     if not is_free and pts < bet:
         await itx.response.send_message(f"❌ ポイントが足りません！（所持：{pts}P / 必要：{bet}P）", ephemeral=True)
         return
-
     view = BlackjackGameView(itx.user.id, bet, is_free=is_free)
-
+    
     if is_blackjack(view.player_hand):
         change = int(bet * 1.5) if not is_free else 0
         new_total = 0 if is_free else add_points(itx.user.id, change)
@@ -290,7 +288,7 @@ async def start_game(itx, bet, is_free=False):
         )
         del games[itx.user.id]
         return
-
+    
     mode_text = "🍀 お試しモード\nポイントの増減なし" if is_free else (
         f"賭け：{bet}P\n\n"
         "ヒット：もう1枚引く\n"
@@ -306,6 +304,7 @@ async def start_game(itx, bet, is_free=False):
     embed.add_field(name="ディーラー", value=view.hand_str(view.dealer_hand, hide_dealer) + "\n合計: ?" if hide_dealer else f"\n合計: {hand_total(view.dealer_hand)}", inline=False)
     embed.add_field(name="あなた", value=view.hand_str(view.player_hand) + f"\n合計: {hand_total(view.player_hand)}", inline=False)
     await itx.response.send_message(embed=embed, view=view, ephemeral=True)
+
 
 async def setup(tree: app_commands.CommandTree):
     @tree.command(name="ブラックジャックパネル設置", description="ブラックジャックパネル設置（オーナー専用）")
