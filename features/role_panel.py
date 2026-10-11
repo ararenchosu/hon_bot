@@ -36,26 +36,71 @@ def get_latest_role_give_panel():
     return None
 # ===========================================
 
+# ========== 重複データ一括整理 ==========
+def cleanup_duplicate_roles():
+    """重複しているロールを整理（古い1件を残して他を削除）"""
+    conn = get_connection()
+    cur = conn.cursor()
+    # 重複を検出
+    cur.execute("""
+        SELECT guild_id, role_id, COUNT(*) as cnt
+        FROM select_roles
+        GROUP BY guild_id, role_id
+        HAVING cnt > 1
+    """)
+    duplicates = cur.fetchall()
+    
+    removed_count = 0
+    for guild_id, role_id, cnt in duplicates:
+        # 最も古いid以外を削除
+        cur.execute("""
+            DELETE FROM select_roles
+            WHERE guild_id = ? AND role_id = ? AND id NOT IN (
+                SELECT MIN(id) FROM select_roles WHERE guild_id = ? AND role_id = ?
+            )
+        """, (guild_id, role_id, guild_id, role_id))
+        removed_count += cur.rowcount
+    
+    conn.commit()
+    conn.close()
+    return removed_count
+# ===========================================
+
 def get_selectable_roles(guild_id):
     conn = get_connection()
     cur = conn.cursor()
     cur.execute("SELECT role_id, role_name FROM select_roles WHERE guild_id=?", (str(guild_id),))
     result = cur.fetchall()
     conn.close()
-    return result
+    # 念のため重複除外
+    seen = {}
+    for rid, name in result:
+        if rid not in seen:
+            seen[rid] = name
+    return list(seen.items())
 
 def add_selectable_role(guild_id, role_id, role_name):
     conn = get_connection()
     cur = conn.cursor()
+    # 存在チェック
+    cur.execute(
+        "SELECT id FROM select_roles WHERE guild_id=? AND role_id=?",
+        (str(guild_id), str(role_id))
+    )
+    existing = cur.fetchone()
+    if existing:
+        conn.close()
+        return "duplicate"  # 重複あり
+    # 新規追加
     cur.execute(
         "INSERT INTO select_roles VALUES (NULL, ?, ?, ?)",
         (str(guild_id), str(role_id), role_name)
     )
     conn.commit()
     conn.close()
+    return "ok"
 
 def remove_selectable_role(guild_id, role_id):
-    """選択候補からロールを削除"""
     conn = get_connection()
     cur = conn.cursor()
     cur.execute(
@@ -179,14 +224,41 @@ class RoleSelectPanelView(discord.ui.View):
                 self.add_item(discord.ui.RoleSelect(placeholder="追加するロールを選択"))
             async def interaction_check(self, inter: discord.Interaction) -> bool:
                 role = self.children[0].values[0]
-                add_selectable_role(inter.guild_id, role.id, role.name)
-                await inter.response.send_message(
-                    f"✅ 「{role.name}」を選択候補に追加しました！", ephemeral=True
-                )
+                result = add_selectable_role(inter.guild_id, role.id, role.name)
+                
+                if result == "duplicate":
+                    await inter.response.send_message(
+                        f"⚠️ 重複したものを登録したため削除します…\n"
+                        f"「{role.name}」は既に登録されています。重複して登録したものを削除しました。",
+                        ephemeral=True
+                    )
+                else:
+                    await inter.response.send_message(
+                        f"✅ 「{role.name}」を選択候補に追加しました！",
+                        ephemeral=True
+                    )
                 return True
         await itx.response.send_message(
             "追加するロールを選択してください：", view=RolePickerView(), ephemeral=True
         )
+
+    @discord.ui.button(label="🔧 重複データ整理", style=discord.ButtonStyle.secondary, custom_id="rpanel:cleanup", row=2)
+    async def cleanup_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
+        if not is_owner(itx):
+            await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
+            return
+        removed = cleanup_duplicate_roles()
+        if removed > 0:
+            await itx.response.send_message(
+                f"✅ 重複して登録したものを削除しました…\n"
+                f"計 {removed} 件の重複データを整理しました。",
+                ephemeral=True
+            )
+        else:
+            await itx.response.send_message(
+                "✅ 重複データは見つかりませんでした。",
+                ephemeral=True
+            )
 
 async def setup(tree):
     @tree.command(name="ロール付与パネル設置", description="選択式ロールパネル設置（オーナー専用）")
@@ -194,6 +266,9 @@ async def setup(tree):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用コマンドです", ephemeral=True)
             return
+        # 初回設置時に重複整理
+        cleanup_duplicate_roles()
+        
         embed = discord.Embed(
             title="🎖️ ロール選択",
             description="""⬇️のボタンを押して、必要なロールを選択して取得してください。
@@ -201,7 +276,8 @@ async def setup(tree):
 
 🎖️ ロールを選択して取得 → ユーザーがロール取得
 🗑️ 選択候補から削除 → オーナー専用：パネルからロール自体を削除
-➕ 付与ロール追加 → オーナー専用：新しいロールを候補に追加""",
+➕ 付与ロール追加 → オーナー専用：新しいロールを候補に追加
+🔧 重複データ整理 → オーナー専用：重複した登録を一括削除""",
             color=0x3498db
         )
         await itx.response.send_message(embed=embed, view=RoleSelectPanelView())
