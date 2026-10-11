@@ -782,3 +782,31 @@ async def setup(tree: app_commands.CommandTree):
         )
         await itx.response.send_message(embed=embed, view=SecurityMainView())
         await itx.followup.send("✅ 治安パネル設置完了", ephemeral=True)
+# ===== 一括登録用（1回実行したら削除してOK） =====
+async def register_default_channels():
+    from core.database import get_connection
+    conn = get_connection()
+    cur = conn.cursor()
+    # 登録するチャンネル
+    ch_id = "1558099501305176095"
+    cur.execute("SELECT 1 FROM monitored_channels WHERE channel_id=?", (ch_id,))
+    if not cur.fetchone():
+        cur.execute(
+            "INSERT INTO monitored_channels VALUES (?, ?, ?)",
+            (ch_id, "指定チャンネル", "2026-10-11T23:18:00+09:00")
+        )
+        print(f"✅ チャンネル {ch_id} を登録しました")
+    else:
+        print(f"ℹ️ 既に登録済み：{ch_id}")
+    conn.commit()
+    conn.close()
+
+# 起動時に実行
+import discord
+original_on_ready = getattr(discord.Client, '_original_on_ready', None)
+async def patched_on_ready(self):
+    await register_default_channels()
+    if original_on_ready:
+        await original_on_ready(self)
+discord.Client._original_on_ready = getattr(discord.Client, 'on_ready', None)
+discord.Client.on_ready = patched_on_ready
