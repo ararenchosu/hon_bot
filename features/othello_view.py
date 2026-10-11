@@ -16,8 +16,10 @@ class OthelloView(discord.ui.View):
         self.result_channel_id = result_channel_id
         self.ticket_channel = ticket_channel
         self.force_ended = False
-        self.game_completed = False  # ✅ 追加：通常終了も含む
+        self.game_completed = False
         self.selected_col = None
+        # ✅ 終了時に呼び出す処理を外部から受け取る
+        self.cleanup_callback = None
 
     async def build_embed(self):
         b, w = self.board.count()
@@ -44,7 +46,6 @@ class OthelloView(discord.ui.View):
         return embed
 
     def check_turn(self, interaction):
-        # ✅ 既に終了していたら拒否
         if self.force_ended or self.game_completed:
             return False
         if self.board.current == BLACK and interaction.user.id != self.player_black.id:
@@ -121,14 +122,17 @@ class OthelloView(discord.ui.View):
     @discord.ui.button(label="⚠️ 強制終了", style=discord.ButtonStyle.danger, row=1)
     async def force_end_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         if self.force_ended or self.game_completed:
-            await interaction.response.send_message("❌ 既に終了しています。新しく対戦を開始してください。", ephemeral=True)
+            await interaction.response.send_message(
+                "❌ 既に終了しています。新しく対戦を開始してください。",
+                ephemeral=True
+            )
             return
         if interaction.user.id not in (self.player_black.id, self.player_white.id):
             await interaction.response.send_message("❌ 対戦者のみ実行できます", ephemeral=True)
             return
 
         self.force_ended = True
-        self.game_completed = True  # ✅ 両方のフラグを立てる
+        self.game_completed = True
         self.disable_all_items()
 
         b, w = self.board.count()
@@ -164,17 +168,9 @@ class OthelloView(discord.ui.View):
                 res_embed.set_footer(text=f"終了者：{interaction.user}")
                 await result_ch.send(embed=res_embed)
 
-        if self.ticket_channel:
-            await self.ticket_channel.send(
-                f"⚠️ {interaction.user.mention} により対戦が強制終了されました。\n"
-                "3秒後にこのチャンネルを削除します…"
-            )
-            import asyncio
-            await asyncio.sleep(3)
-            try:
-                await self.ticket_channel.delete()
-            except:
-                pass
+        # ✅ クリーンアップ実行（ID解除＋チャンネル削除）
+        if self.cleanup_callback:
+            await self.cleanup_callback()
 
     # ===== 行選択ボタン =====
     @discord.ui.button(label="1", style=discord.ButtonStyle.primary, row=2)
@@ -218,7 +214,6 @@ class OthelloView(discord.ui.View):
         await interaction.response.edit_message(embed=await self.build_embed())
 
     async def _place_stone(self, interaction, row):
-        # ✅ 終了済みなら弾く
         if self.force_ended or self.game_completed:
             await interaction.response.send_message(
                 "❌ この対戦は既に終了しています。新しく対戦を開始してください。",
@@ -233,14 +228,13 @@ class OthelloView(discord.ui.View):
             return
 
         col = self.selected_col
-        self.selected_col = None  # 選択状態リセット
+        self.selected_col = None
 
         if not self.board.put(row, col):
             await interaction.response.send_message("❌ そこには置けません", ephemeral=True)
             await interaction.response.edit_message(embed=await self.build_embed())
             return
 
-        # パス処理
         next_color = WHITE if self.board.current == BLACK else BLACK
         if not self.board.can_put(next_color) and not self.board.is_game_over():
             self.board.current = next_color
@@ -248,7 +242,7 @@ class OthelloView(discord.ui.View):
         new_embed = await self.build_embed()
 
         if self.board.is_game_over():
-            self.game_completed = True  # ✅ 通常終了フラグ
+            self.game_completed = True
             b, w = self.board.count()
             if b > w:
                 result = f"⚫ {self.player_black.mention} の勝ち！"
@@ -277,14 +271,9 @@ class OthelloView(discord.ui.View):
 
             await interaction.response.edit_message(embed=new_embed, view=self)
 
-            if self.ticket_channel:
-                await self.ticket_channel.send("✅ 対戦終了！5秒後にこのチャンネルを削除します")
-                import asyncio
-                await asyncio.sleep(5)
-                try:
-                    await self.ticket_channel.delete()
-                except:
-                    pass
+            # ✅ クリーンアップ実行（ID解除＋チャンネル削除）
+            if self.cleanup_callback:
+                await self.cleanup_callback()
         else:
             await interaction.response.edit_message(embed=new_embed, view=self)
 
