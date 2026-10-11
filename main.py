@@ -12,7 +12,7 @@ from features.point_admin_panel import setup as point_admin_setup
 import features.embed_sender as embed_sender
 import features.clear_messages as clear_messages
 import features.moderation_panel as moderation_panel
-import features.security_panel as security_panel  # ✅ 治安管理パネル 追加
+import features.security_panel as security_panel  # ✅ 治安管理パネル
 import features.othello as othello
 import features.othello_panel as othello_panel
 import features.auth_panel as auth_panel
@@ -50,6 +50,14 @@ async def restore_panel(channel_id, message_id, ViewClass, *view_args):
         print(f"⚠️ 復元失敗: {e}")
         return False
 
+# ========== ✅ 禁止ワード監視イベント ここから ==========
+@bot.event
+async def on_message(message):
+    # 禁止ワードチェック実行
+    if message.guild and not message.author.bot:
+        await security_panel.check_forbidden_words(message)
+# ========== ✅ ここまで追加 ==========
+
 @bot.event
 async def on_ready():
     print(f"\n✅ ログイン：{bot.user}")
@@ -62,7 +70,7 @@ async def on_ready():
         from features.highlow_panel import HighLowPanelView
         from features.point_admin_panel import PointAdminView
         from features.moderation_panel import ModerationPanelView
-        from features.security_panel import SecurityMainView  # ✅ 治安管理 追加
+        from features.security_panel import SecurityMainView, ForbiddenWordView, LockChannelView, UnlockChannelView, EmergencyLockView, EmergencyUnlockView
         
         bot.add_view(LotteryPanelView())
         bot.add_view(PointCheckPanelView())
@@ -72,7 +80,12 @@ async def on_ready():
         bot.add_view(HighLowPanelView())
         bot.add_view(PointAdminView())
         bot.add_view(ModerationPanelView())
-        bot.add_view(SecurityMainView())  # ✅ 治安管理 View登録
+        bot.add_view(SecurityMainView())
+        bot.add_view(ForbiddenWordView())
+        bot.add_view(LockChannelView())
+        bot.add_view(UnlockChannelView())
+        bot.add_view(EmergencyLockView())
+        bot.add_view(EmergencyUnlockView())
         bot.add_view(othello_panel.OthelloPanelView())
         bot.add_view(call_panel.CallPanelView(bot))
         bot.add_view(auth_panel.AuthPanelView())
@@ -103,7 +116,7 @@ async def on_ready():
     print("  ✅ clear_messages → /メッセージ全削除")
     await moderation_panel.setup(tree)
     print("  ✅ moderation_panel → /管理パネル設置")
-    await security_panel.setup(tree)  # ✅ 治安管理 コマンド登録
+    await security_panel.setup(tree)
     print("  ✅ security_panel → /治安パネル設置")
     await othello.setup(tree)
     await othello_panel.setup(tree)
