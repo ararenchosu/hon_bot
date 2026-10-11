@@ -43,7 +43,7 @@ async def restore_panel(channel_id, message_id, ViewClass, *view_args):
 
 @bot.event
 async def on_ready():
-    print(f"✅ ログイン：{bot.user}")
+    print(f"\n✅ ログイン：{bot.user}")
 
     # ✅ View登録
     try:
@@ -60,24 +60,39 @@ async def on_ready():
         print(f"⚠️ View登録エラー: {e}")
 
     # ✅ コマンド登録
-    print("🔄 コマンド登録中...")
+    print("\n🔄 コマンド登録中...")
     await lottery_setup(tree)
-    print("  → くじ引きパネル / ポイント確認パネル 登録完了")
+    print("  ✅ lottery_panel（くじ引き・ポイント確認）")
     await othello.setup(tree)
+    print("  ✅ othello")
     await othello_panel.setup(tree)
+    print("  ✅ othello_panel")
     await auth_panel.setup(tree)
+    print("  ✅ auth_panel")
     await role_panel.setup(tree)
+    print("  ✅ role_panel")
     await revoke_panel.setup(tree)
+    print("  ✅ revoke_panel")
     await call_panel.setup(tree, bot)
+    print("  ✅ call_panel")
     await welcome_leave.setup(bot)
+    print("  ✅ welcome_leave")
     print("✅ 全コマンド登録完了")
+
+    # ✅ 登録済みコマンドを先に表示
+    print("\n📋 登録されているコマンド（同期前）：")
+    for cmd in tree.get_commands():
+        print(f"   /{cmd.name} — {cmd.description}")
 
     # ✅ ギルド同期
     GUILD_ID = 1542788841465978880
+    print(f"\n🔄 ギルド {GUILD_ID} に同期中...")
     synced = await tree.sync(guild=discord.Object(id=GUILD_ID))
-    
-    # ✅ 同期後に実際に使えるコマンドを一覧表示
-    print(f"\n✅ 同期完了！登録されたコマンド一覧（{len(synced)}件）：")
+
+    # ✅ 同期後の一覧を表示
+    print(f"\n✅ 同期完了！反映されたコマンド一覧（{len(synced)}件）：")
+    if not synced:
+        print("   ⚠️ 0件です！コマンドが正しく登録されていません")
     for cmd in synced:
         print(f"   /{cmd.name} — {cmd.description}")
     print()
@@ -96,6 +111,7 @@ async def on_ready():
     role_revoke_saved = revoke_panel.get_latest_role_revoke_panel()
     if role_revoke_saved:
         await restore_panel(role_revoke_saved["channel_id"], role_revoke_saved["message_id"], revoke_panel.RoleRevokePanelView)
+    print("✅ パネル復元完了\n")
 
 
 bot.run(BOT_TOKEN)
