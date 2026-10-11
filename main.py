@@ -1,28 +1,25 @@
 # ============================================================
-# ✅ discord.py の内部チェックを先にすり抜ける
+# ✅ 最優先：絶対に最初に本物のPyNaClを読み込む
 # ============================================================
 import sys
-import importlib
+import os
 
-# 先に偽モジュールを仕込んで discord.py のチェックをパスさせる
-class _FakeNacl:
-    __version__ = "1.6.2"
-    class bindings:
-        @staticmethod
-        def crypto_secretbox_KEYBYTES(): return 32
-sys.modules['nacl'] = _FakeNacl()
-sys.modules['nacl.bindings'] = _FakeNacl.bindings
+# 仮想環境のパスを明示的に追加
+venv_base = os.path.dirname(os.path.dirname(sys.executable))
+for dirname in ['lib/python3.13/site-packages', 'lib/site-packages']:
+    p = os.path.join(venv_base, dirname)
+    if os.path.exists(p) and p not in sys.path:
+        sys.path.insert(0, p)
 
-# ここから本物を読み込みにいく
+# 本物を読み込む
 try:
-    import site
-    for p in site.getsitepackages():
-        if p not in sys.path:
-            sys.path.insert(0, p)
     import nacl
-    print(f"✅ 本物 PyNaCl 読み込み成功: {nacl.__version__}")
+    print(f"✅ ✅ PyNaCl 読み込み成功: {nacl.__version__}")
 except Exception as e:
-    print(f"⚠️ 本物 PyNaCl 読み込み: {e}（偽モジュールで代替）")
+    print(f"❌ PyNaCl 読み込み失敗: {e}")
+    print("💡 コンソールに「pip install --force-reinstall PyNaCl」を実行してください")
+    # ここで停止させる
+    sys.exit(1)
 
 # ============================================================
 # ✅ ここから通常のコード
