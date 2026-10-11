@@ -2,6 +2,7 @@ import discord
 from discord import app_commands
 import asyncio
 import random
+from core.common import is_owner
 
 # ✅ 設定
 CATEGORY_ID = 1558099663922405376  # 一時ルーム用カテゴリID
@@ -118,7 +119,6 @@ class VoiceCreatePanelView(discord.ui.View):
         custom_id="voice:edit"
     )
     async def edit_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
-        from core.common import is_owner
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
             return
@@ -155,7 +155,7 @@ class VoiceCreatePanelView(discord.ui.View):
 
 
 async def setup_panel(channel):
-    """パネルを送信するコマンド用関数"""
+    """パネルを送信"""
     colors = [
         discord.Color.blue(), discord.Color.green(),
         discord.Color.gold(), discord.Color.orange(),
@@ -172,5 +172,11 @@ async def setup_panel(channel):
 
 
 async def setup(tree: app_commands.CommandTree):
-    # 起動時に監視タスクを回復する場合の処理を登録
-    pass
+    """コマンド登録"""
+    @tree.command(name="通話パネル設置", description="一時通話チャンネル作成パネルを設置（オーナー専用）")
+    async def setup_voice_panel(itx: discord.Interaction):
+        if not is_owner(itx):
+            await itx.response.send_message("❌ オーナー専用コマンドです", ephemeral=True)
+            return
+        await setup_panel(itx.channel)
+        await itx.response.send_message("✅ パネルを設置しました", ephemeral=True)
