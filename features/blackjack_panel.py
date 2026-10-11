@@ -58,7 +58,9 @@ def add_points(user_id, amount):
 
 async def send_result_embed(client, user, dealer_cards, player_cards, result_text, change, bet, total, is_free=False):
     channel = client.get_channel(BJ_RESULT_CHANNEL_ID)
-    if not channel: return
+    if not channel:
+        print(f"⚠️ BJ_RESULT_CHANNEL_ID が見つかりません: {BJ_RESULT_CHANNEL_ID}")
+        return
     dealer_str = " ".join(f"{s}{r}" for s, r in dealer_cards)
     player_str = " ".join(f"{s}{r}" for s, r in player_cards)
     title = "🃏 ブラックジャック結果（お試し）" if is_free else "🃏 ブラックジャック結果"
@@ -79,9 +81,14 @@ async def send_result_embed(client, user, dealer_cards, player_cards, result_tex
         embed.add_field(name="備考", value="お試しモード", inline=False)
     embed.set_thumbnail(url=user.display_avatar.url)
     await channel.send(embed=embed)
-    # ✅ カウントUP（誰でも+1）
-    count = increment("blackjack")
-    await channel.edit(name=f"🃏・ブラックジャック・{count}回", reason="プレイ回数更新")
+    
+    # ✅ お試し以外の場合だけカウントUP
+    if not is_free:
+        count = increment("blackjack")
+        print(f"🃏 ブラックジャック: {count}回 に更新")
+        await channel.edit(name=f"🃏・ブラックジャック・{count}回", reason="プレイ回数更新")
+    else:
+        print("🍀 お試しプレイ → カウントしません")
 
 games = {}
 
@@ -222,6 +229,10 @@ class BlackjackPanelView(discord.ui.View):
     async def free_play(self, itx, btn):
         await start_game(itx, 0, True)
 
+    @discord.ui.button(label="💳 1P ブラックジャック", style=discord.ButtonStyle.primary, custom_id="bj:1", row=2)
+    async def bj1(self, itx, btn):
+        await start_game(itx, 1)
+
     @discord.ui.button(label="💳 10P ブラックジャック", style=discord.ButtonStyle.primary, custom_id="bj:10", row=2)
     async def bj10(self, itx, btn):
         await start_game(itx, 10)
@@ -265,7 +276,7 @@ async def setup(tree: app_commands.CommandTree):
             await itx.response.send_message("❌ 管理者専用", ephemeral=True)
             return
         embed = discord.Embed(title="🃏 ブラックジャック", description="""🔍 途中のゲーム → 消しても再表示
-🍀 お試し → 無料プレイ
-💳 10P/50P/100P → ポイントで対戦""", color=0x1ABC9C)
+🍀 お試し → 無料プレイ（カウントされません）
+💳 1P/10P/50P/100P → ポイントで対戦（カウントされます）""", color=0x1ABC9C)
         await itx.response.send_message(embed=embed, view=BlackjackPanelView())
         await itx.followup.send("✅ 設置完了", ephemeral=True)
