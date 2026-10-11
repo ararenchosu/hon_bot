@@ -6,6 +6,9 @@ import os
 from datetime import datetime, timedelta, timezone
 JST = timezone(timedelta(hours=9))
 
+# ✅ 結果通知用チャンネルID
+LOTTERY_RESULT_CHANNEL_ID = 1558705232781906071
+
 DATA_FILE = "kn_points_data.json"
 
 class PointData:
@@ -21,9 +24,8 @@ class PointData:
                 with open(DATA_FILE, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     self.points = data.get("points", {})
-                    # ✅ 旧形式から完全に引き継ぎ
+                    # 旧形式からの引き継ぎ
                     old_last = data.get("last_draw", {})
-                    # 既存のlast_lottery_drawが空の場合、旧データで置き換え
                     if not data.get("last_lottery_draw"):
                         self.last_lottery_draw = old_last
                     else:
@@ -110,6 +112,7 @@ class LotteryPanelView(discord.ui.View):
         point_data.mark_lottery_drew(itx.user.id)
         new_points = point_data.add_points(itx.user.id, prize["points"])
 
+        # ✅ 結果をユーザーに返信
         await itx.response.send_message(
             f"🎉 {prize['name']} 当選！\n"
             f"➕ {prize['points']}ポイント 獲得✨\n"
@@ -117,7 +120,41 @@ class LotteryPanelView(discord.ui.View):
             ephemeral=True
         )
 
-    @discord.ui.button(label="✏️ パネル編集", style=discord.ButtonStyle.secondary, custom_id="lottery:edit")
+        # ✅ 結果を指定チャンネルに送信
+        await send_lottery_result_embed(itx, prize, new_points)
+
+    # ✅ オーナー専用テストボタン
+    @discord.ui.button(label="🧪 通知テスト(オーナーのみ)", style=discord.ButtonStyle.secondary, custom_id="lottery:test", row=1)
+    async def test_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
+        if not is_owner(itx):
+            await itx.response.send_message("❌ このボタンはオーナー専用です", ephemeral=True)
+            return
+
+        import random
+        r = random.random()
+        cumulative = 0
+        prize = None
+        for p in LOTTERY_PRIZES:
+            cumulative += p["rate"]
+            if r < cumulative:
+                prize = p
+                break
+        if prize is None:
+            prize = LOTTERY_PRIZES[-1]
+
+        # ✅ テスト用：ポイント加算も日付記録もしない
+        dummy_points = point_data.get_points(itx.user.id)  # 現在のポイントをそのまま表示
+        await itx.response.send_message(
+            f"🧪 テスト実行！\n"
+            f"表示結果：{prize['name']}\n"
+            f"⚠️ ポイント・抽選権には影響しません",
+            ephemeral=True
+        )
+
+        # ✅ 通知だけ送信
+        await send_lottery_result_embed(itx, prize, dummy_points, is_test=True)
+
+    @discord.ui.button(label="✏️ パネル編集", style=discord.ButtonStyle.secondary, custom_id="lottery:edit", row=2)
     async def edit_lottery_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
@@ -144,6 +181,33 @@ class LotteryPanelView(discord.ui.View):
                 await m_itx.response.edit_message(embed=embed, view=LotteryPanelView())
                 await m_itx.followup.send("✅ くじパネルを更新しました", ephemeral=True)
         await itx.response.send_modal(LotteryEditModal())
+
+
+# ✅ 通知送信を共通化した関数
+async def send_lottery_result_embed(itx, prize, total_points, is_test=False):
+    result_channel = itx.client.get_channel(LOTTERY_RESULT_CHANNEL_ID)
+    if not result_channel:
+        print(f"⚠️ 結果通知チャンネルが見つかりません: {LOTTERY_RESULT_CHANNEL_ID}")
+        return
+
+    title = "🧪 【テスト】くじ引き結果" if is_test else "🗳 くじ引き結果"
+    description = f"{itx.user.mention} がくじを引きました！"
+    if is_test:
+        description = f"{itx.user.mention} がテスト抽選を実行しました！\n⚠️ これはテストです（ポイント加算なし）"
+
+    result_embed = discord.Embed(
+        title=title,
+        description=description,
+        color=0x888888 if is_test else 0xFFD700,
+        timestamp=datetime.now(JST)
+    )
+    result_embed.add_field(name="🎯 結果", value=prize["name"], inline=True)
+    result_embed.add_field(name="✨ 獲得ポイント", value=f"{prize['points']}ポイント", inline=True)
+    result_embed.add_field(name="💳 合計ポイント", value=f"{total_points}ポイント", inline=True)
+    result_embed.set_thumbnail(url=itx.user.display_avatar.url)
+
+    await result_channel.send(embed=result_embed)
+
 
 class PointCheckPanelView(discord.ui.View):
     def __init__(self):
