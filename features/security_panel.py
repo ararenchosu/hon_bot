@@ -687,26 +687,31 @@ class SecurityMainView(discord.ui.View):
 async def setup(tree: app_commands.CommandTree):
     init_security_tables()
     
-    # ✅ 永続View登録
-    tree.add_view(SecurityMainView())
-    tree.add_view(ForbiddenWordView())
-    tree.add_view(LockChannelView())
-    tree.add_view(UnlockChannelView())
-    tree.add_view(EmergencyLockView())
-    tree.add_view(EmergencyUnlockView())
+    # ✅ 永続View登録：botに対して登録する（treeではない）
+    bot = tree.client
+    bot.add_view(SecurityMainView())
+    bot.add_view(ForbiddenWordView())
+    bot.add_view(LockChannelView())
+    bot.add_view(UnlockChannelView())
+    bot.add_view(EmergencyLockView())
+    bot.add_view(EmergencyUnlockView())
     
     # ✅ 起動時：固定チャンネルをDBに登録
     from core.database import get_connection
     conn = get_connection()
     cur = conn.cursor()
     ch_id_str = str(TARGET_CHANNEL_ID)
-    cur.execute("SELECT 1 FROM monitored_channels WHERE channel_id=?", (ch_id_str,))
-    if not cur.fetchone():
-        cur.execute(
-            "INSERT OR IGNORE INTO monitored_channels VALUES (?, ?, ?)",
-            (ch_id_str, "管理対象チャンネル", datetime.now(JST).isoformat())
-        )
-        print(f"✅ 管理対象チャンネル登録：<#{TARGET_CHANNEL_ID}>")
+    # monitored_channels テーブルが存在する場合のみ実行
+    try:
+        cur.execute("SELECT 1 FROM monitored_channels WHERE channel_id=?", (ch_id_str,))
+        if not cur.fetchone():
+            cur.execute(
+                "INSERT OR IGNORE INTO monitored_channels VALUES (?, ?, ?)",
+                (ch_id_str, "管理対象チャンネル", datetime.now(JST).isoformat())
+            )
+            print(f"✅ 管理対象チャンネル登録：<#{TARGET_CHANNEL_ID}>")
+    except Exception as e:
+        print(f"ℹ️ 監視チャンネルテーブルスキップ：{e}")
     conn.commit()
     conn.close()
     
