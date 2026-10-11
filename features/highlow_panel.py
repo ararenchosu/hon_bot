@@ -5,13 +5,12 @@ import json
 import os
 from datetime import datetime, timedelta, timezone
 from core.common import is_owner
-from core.game_stats import increment
 
 JST = timezone(timedelta(hours=9))
 DATA_FILE = "kn_points_data.json"
 HL_RESULT_CHANNEL_ID = 1558772472881488004
 
-# ✅ 2=2 ～ K=13、A=1 に変更 → 1～13に収まる
+# ✅ 2=2 ～ K=13、A=1 → 1～13に収まる
 RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"]
 CARD_VALUES = {
     "A": 1,
@@ -73,13 +72,7 @@ async def send_result_embed(client, user, first_card, next_card, choice, result_
         embed.add_field(name="変動", value=f"{change:+d}P", inline=True)
         embed.add_field(name="合計", value=f"{total}P", inline=True)
     await channel.send(embed=embed)
-    
-    if not is_free:
-        count = increment("highlow")
-        print(f"📈 ハイロー: {count}回 に更新")
-        await channel.edit(name=f"📈・ハイロー・{count}回", reason="プレイ回数更新")
-    else:
-        print("🍀 お試しプレイ → カウントしません")
+    # ✅ カウント・チャンネル名更新なしに変更
 
 games = {}
 
@@ -191,23 +184,28 @@ class HighLowPanelView(discord.ui.View):
         embed.add_field(name="現在のカード", value=f"**{card_value(g.first_card[1])}**", inline=False)
         await itx.response.send_message(embed=embed, view=g, ephemeral=True)
 
-    @discord.ui.button(label="🍀 お試し", style=discord.ButtonStyle.secondary, custom_id="hl:free", row=1)
+    @discord.ui.button(label="💳 ポイント確認", style=discord.ButtonStyle.success, custom_id="hl:check_points", row=1)
+    async def check_points(self, itx, btn):
+        pts = get_points(itx.user.id)
+        await itx.response.send_message(f"💳 あなたのポイント：**{pts}P**", ephemeral=True)
+
+    @discord.ui.button(label="🍀 お試し", style=discord.ButtonStyle.secondary, custom_id="hl:free", row=2)
     async def free(self, itx, btn):
         await start_game(itx, 0, True)
 
-    @discord.ui.button(label="💳 1P", style=discord.ButtonStyle.primary, custom_id="hl:1", row=2)
+    @discord.ui.button(label="💳 1P", style=discord.ButtonStyle.primary, custom_id="hl:1", row=3)
     async def p1(self, itx, btn):
         await start_game(itx, 1)
 
-    @discord.ui.button(label="💳 10P", style=discord.ButtonStyle.primary, custom_id="hl:10", row=2)
+    @discord.ui.button(label="💳 10P", style=discord.ButtonStyle.primary, custom_id="hl:10", row=3)
     async def p10(self, itx, btn):
         await start_game(itx, 10)
 
-    @discord.ui.button(label="💳 50P", style=discord.ButtonStyle.primary, custom_id="hl:50", row=3)
+    @discord.ui.button(label="💳 50P", style=discord.ButtonStyle.primary, custom_id="hl:50", row=4)
     async def p50(self, itx, btn):
         await start_game(itx, 50)
 
-    @discord.ui.button(label="💳 100P", style=discord.ButtonStyle.danger, custom_id="hl:100", row=3)
+    @discord.ui.button(label="💳 100P", style=discord.ButtonStyle.danger, custom_id="hl:100", row=4)
     async def p100(self, itx, btn):
         await start_game(itx, 100)
 
@@ -232,8 +230,9 @@ async def setup(tree: app_commands.CommandTree):
             await itx.response.send_message("❌ 管理者専用", ephemeral=True)
             return
         embed = discord.Embed(title="📈 ハイ＆ロー", description="""🔍 途中のゲーム → 消しても再表示
-🍀 お試し → 無料（カウントされません）
-💳 1P/10P/50P/100P → ポイントで対戦（カウントされます）
+💳 ポイント確認 → 現在のポイントを表示
+🍀 お試し → 無料プレイ
+💳 1P/10P/50P/100P → ポイントで対戦
 A=1 ～ K=13 の数字で勝負！""", color=0x3498DB)
         await itx.response.send_message(embed=embed, view=HighLowPanelView())
         await itx.followup.send("✅ 設置完了", ephemeral=True)
