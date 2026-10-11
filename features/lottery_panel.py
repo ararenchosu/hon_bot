@@ -141,7 +141,7 @@ class PointCheckPanelView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="💳 ポイントを確認", style=discord.ButtonStyle.success, custom_id="points:check")
+    @discord.ui.button(label="💰ポイントを確認", style=discord.ButtonStyle.success, custom_id="points:check")
     async def check_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
         pts = point_data.get_points(itx.user.id)
         await itx.response.send_message(
