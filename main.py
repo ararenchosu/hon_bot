@@ -3,8 +3,8 @@ from discord import app_commands
 import os
 from core.database import init_db
 
-# 各機能インポート
-from lottery_panel import setup as lottery_setup
+# ✅ 修正：features. を追加
+from features.lottery_panel import setup as lottery_setup
 import features.othello as othello
 import features.othello_panel as othello_panel
 import features.auth_panel as auth_panel
@@ -19,7 +19,6 @@ if not BOT_TOKEN:
     exit(1)
 print(f"✅ トークン読み込み完了：{BOT_TOKEN[:10]}...")
 
-# ✅ DB初期化：起動時に必ず実行
 init_db()
 
 intents = discord.Intents.default()
@@ -46,9 +45,9 @@ async def restore_panel(channel_id, message_id, ViewClass, *view_args):
 
 @bot.event
 async def on_ready():
-    # ✅ 永続View登録
     try:
-        from lottery_panel import LotteryPanelView, PointCheckPanelView
+        # ✅ 修正：features. を追加
+        from features.lottery_panel import LotteryPanelView, PointCheckPanelView
         
         bot.add_view(LotteryPanelView())
         bot.add_view(PointCheckPanelView())
@@ -61,30 +60,24 @@ async def on_ready():
     except Exception as e:
         print(f"⚠️ View登録エラー: {e}")
 
-    # ✅ 保存済みパネルを自動復元
     print("🔄 パネル復元中...")
-    # 呼び出しパネル
     call_saved = call_panel.get_latest_call_panel()
     if call_saved:
         await restore_panel(call_saved["channel_id"], call_saved["message_id"],
                             call_panel.CallPanelView, bot)
-    # 認証パネル
     auth_saved = auth_panel.get_latest_auth_panel()
     if auth_saved:
         await restore_panel(auth_saved["channel_id"], auth_saved["message_id"],
                             auth_panel.AuthPanelView)
-    # ロール付与パネル
     role_give_saved = role_panel.get_latest_role_give_panel()
     if role_give_saved:
         await restore_panel(role_give_saved["channel_id"], role_give_saved["message_id"],
                             role_panel.RoleSelectPanelView)
-    # ロール剥奪パネル
     role_revoke_saved = revoke_panel.get_latest_role_revoke_panel()
     if role_revoke_saved:
         await restore_panel(role_revoke_saved["channel_id"], role_revoke_saved["message_id"],
                             revoke_panel.RoleRevokePanelView)
 
-    # ✅ コマンド登録（on_ready内にまとめる）
     await lottery_setup(tree)
     await othello.setup(tree)
     await othello_panel.setup(tree)
@@ -94,7 +87,6 @@ async def on_ready():
     await call_panel.setup(tree, bot)
     await welcome_leave.setup(bot)
 
-    # ✅ ギルド同期
     GUILD_ID = 1542788841465978880
     await tree.sync(guild=discord.Object(id=GUILD_ID))
     
