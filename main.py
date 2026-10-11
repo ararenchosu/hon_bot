@@ -1,33 +1,8 @@
-# ============================================================
-# ✅ 最優先：絶対に最初に本物のPyNaClを読み込む
-# ============================================================
-import sys
-import os
-
-# 仮想環境のパスを明示的に追加
-venv_base = os.path.dirname(os.path.dirname(sys.executable))
-for dirname in ['lib/python3.13/site-packages', 'lib/site-packages']:
-    p = os.path.join(venv_base, dirname)
-    if os.path.exists(p) and p not in sys.path:
-        sys.path.insert(0, p)
-
-# 本物を読み込む
-try:
-    import nacl
-    print(f"✅ ✅ PyNaCl 読み込み成功: {nacl.__version__}")
-except Exception as e:
-    print(f"❌ PyNaCl 読み込み失敗: {e}")
-    print("💡 コンソールに「pip install --force-reinstall PyNaCl」を実行してください")
-    # ここで停止させる
-    sys.exit(1)
-
-# ============================================================
-# ✅ ここから通常のコード
-# ============================================================
 import discord
 from discord import app_commands
-import os
+import asyncio
 from core.database import init_db
+from core.common import OWNER_GUILD_ID  # もしくは直接IDを記入
 from features.lottery_panel import setup as lottery_setup
 from features.login_bonus import setup as login_bonus_setup
 import features.othello as othello
@@ -38,6 +13,7 @@ import features.revoke_panel as revoke_panel
 import features.call_panel as call_panel
 import features.welcome_leave as welcome_leave
 import features.voice_channel_panel as voice_panel
+import features.ranking_panel as ranking_panel
 
 BOT_TOKEN = os.getenv("DISCORD_TOKEN")
 if not BOT_TOKEN:
@@ -50,7 +26,6 @@ init_db()
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
-
 bot = discord.Client(intents=intents)
 tree = app_commands.CommandTree(bot)
 
@@ -70,9 +45,11 @@ async def restore_panel(channel_id, message_id, ViewClass, *view_args):
 @bot.event
 async def on_ready():
     print(f"\n✅ ログイン：{bot.user}")
+    
     try:
         from features.lottery_panel import LotteryPanelView, PointCheckPanelView
         from features.login_bonus import LoginBonusPanelView
+        
         bot.add_view(LotteryPanelView())
         bot.add_view(PointCheckPanelView())
         bot.add_view(LoginBonusPanelView())
@@ -82,6 +59,7 @@ async def on_ready():
         bot.add_view(role_panel.RoleSelectPanelView())
         bot.add_view(revoke_panel.RoleRevokePanelView())
         bot.add_view(voice_panel.VoiceCreatePanelView())
+        bot.add_view(ranking_panel.RankingPanelView())
         print("✅ 全View登録完了")
     except Exception as e:
         print(f"⚠️ View登録エラー: {e}")
@@ -100,17 +78,27 @@ async def on_ready():
     await welcome_leave.setup(bot)
     await voice_panel.setup(tree)
     print("  ✅ voice_channel_panel → /通話パネル設置")
+    await ranking_panel.setup(tree)
+    print("  ✅ ranking_panel → /ポイントランキングパネル設置")
     print("✅ 全コマンド登録完了")
 
     print("\n📋 登録済みコマンド一覧：")
     for cmd in tree.get_commands():
         print(f"   /{cmd.name}")
 
-    print("\n🔄 グローバル同期中...")
-    synced = await tree.sync()
+    print("\n🔄 ギルド同期中（即時反映）...")
+    # ===== 自分のサーバーIDに置き換え =====
+    GUILD_ID = 1542788841465978880  # ← ここを自分のサーバーIDに！
+    guild = discord.Object(id=GUILD_ID)
+    synced = await tree.sync(guild=guild)
+    # ====================================
     print(f"✅ 同期完了！合計 {len(synced)} 件")
     for cmd in synced:
         print(f"   /{cmd.name}")
+
+    print("\n🔄 自動更新タスク起動中...")
+    asyncio.create_task(ranking_panel.auto_update_task(bot))
+    print("✅ ランキング自動更新タスク起動完了")
 
     print("\n🔄 パネル復元中...")
     call_saved = call_panel.get_latest_call_panel()
@@ -125,7 +113,6 @@ async def on_ready():
     role_revoke_saved = revoke_panel.get_latest_role_revoke_panel()
     if role_revoke_saved:
         await restore_panel(role_revoke_saved["channel_id"], role_revoke_saved["message_id"], revoke_panel.RoleRevokePanelView)
-
     print("✅ 起動完了\n")
 
 bot.run(BOT_TOKEN)
