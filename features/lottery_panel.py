@@ -21,8 +21,13 @@ class PointData:
                 with open(DATA_FILE, "r", encoding="utf-8") as f:
                     data = json.load(f)
                     self.points = data.get("points", {})
-                    # 旧形式からの移行にも対応
-                    self.last_lottery_draw = data.get("last_lottery_draw", data.get("last_draw", {}))
+                    # ✅ 旧形式から完全に引き継ぎ
+                    old_last = data.get("last_draw", {})
+                    # 既存のlast_lottery_drawが空の場合、旧データで置き換え
+                    if not data.get("last_lottery_draw"):
+                        self.last_lottery_draw = old_last
+                    else:
+                        self.last_lottery_draw = data.get("last_lottery_draw", {})
                     self.last_bonus_receive = data.get("last_bonus_receive", {})
             except Exception as e:
                 print(f"⚠️ データ読み込みエラー: {e}")
@@ -199,8 +204,8 @@ async def setup(tree):
             await itx.response.send_message("❌ オーナー専用コマンドです", ephemeral=True)
             return
         embed = discord.Embed(
-            title="💳 ポイント確認",
-            description="下のボタンを押すと現在のポイントが確認できます✨",
+            title="💰ポイント確認",
+            description="⬇️のボタンを押すと現在のポイントが確認できます✨",
             color=0x2ECC71
         )
         await itx.response.send_message(embed=embed, view=PointCheckPanelView())
