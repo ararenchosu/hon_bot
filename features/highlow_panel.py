@@ -49,7 +49,9 @@ def get_multiplier(streak):
 
 async def send_result_embed(client, user, first_card, next_card, choice, result_text, change, bet, total, streak, is_free=False, is_cashout=False):
     channel = client.get_channel(HL_RESULT_CHANNEL_ID)
-    if not channel: return
+    if not channel:
+        print(f"⚠️ HL_RESULT_CHANNEL_ID が見つかりません: {HL_RESULT_CHANNEL_ID}")
+        return
     title = "📈 ハイ＆ロー確定" if is_cashout else ("📈 結果（お試し）" if is_free else "📈 結果")
     color = 0x999999 if is_free else (0x2ECC71 if change >= 0 else 0xE74C3C)
     embed = discord.Embed(title=title, description=f"{user.mention} がプレイ", color=color, timestamp=datetime.now(JST))
@@ -65,9 +67,14 @@ async def send_result_embed(client, user, first_card, next_card, choice, result_
         embed.add_field(name="変動", value=f"{change:+d}P", inline=True)
         embed.add_field(name="合計", value=f"{total}P", inline=True)
     await channel.send(embed=embed)
-    # ✅ カウントUP
-    count = increment("highlow")
-    await channel.edit(name=f"📈・ハイロー・{count}回", reason="更新")
+    
+    # ✅ お試し以外の場合だけカウントUP
+    if not is_free:
+        count = increment("highlow")
+        print(f"📈 ハイロー: {count}回 に更新")
+        await channel.edit(name=f"📈・ハイロー・{count}回", reason="プレイ回数更新")
+    else:
+        print("🍀 お試しプレイ → カウントしません")
 
 games = {}
 
@@ -100,13 +107,11 @@ class HighLowGameView(discord.ui.View):
         v1 = card_value(self.first_card[1])
         v2 = card_value(next_card[1])
         won = v2 > v1 if choice=="high" else v2 < v1
-
         if v2 == v1:
             await send_result_embed(itx.client, itx.user, self.first_card, next_card, choice, "⚖️ 引き分け", 0, self.bet, get_points(self.user_id) if not self.is_free else 0, self.streak, self.is_free)
             self.first_card = next_card
             await self.show_choice_ui(itx)
             return
-
         if won:
             self.streak += 1
             await send_result_embed(itx.client, itx.user, self.first_card, next_card, choice, f"🎉 当たり！×{get_multiplier(self.streak):.1f}", 0, self.bet, get_points(self.user_id) if not self.is_free else 0, self.streak, self.is_free)
@@ -184,16 +189,20 @@ class HighLowPanelView(discord.ui.View):
         await start_game(itx, 0, True)
 
     @discord.ui.button(label="💳 1P", style=discord.ButtonStyle.primary, custom_id="hl:1", row=2)
-    async def p1(self, itx, btn): await start_game(itx, 1)
+    async def p1(self, itx, btn):
+        await start_game(itx, 1)
 
     @discord.ui.button(label="💳 10P", style=discord.ButtonStyle.primary, custom_id="hl:10", row=2)
-    async def p10(self, itx, btn): await start_game(itx, 10)
+    async def p10(self, itx, btn):
+        await start_game(itx, 10)
 
     @discord.ui.button(label="💳 50P", style=discord.ButtonStyle.primary, custom_id="hl:50", row=3)
-    async def p50(self, itx, btn): await start_game(itx, 50)
+    async def p50(self, itx, btn):
+        await start_game(itx, 50)
 
     @discord.ui.button(label="💳 100P", style=discord.ButtonStyle.danger, custom_id="hl:100", row=3)
-    async def p100(self, itx, btn): await start_game(itx, 100)
+    async def p100(self, itx, btn):
+        await start_game(itx, 100)
 
 async def start_game(itx, bet, is_free=False):
     pts = get_points(itx.user.id)
@@ -216,7 +225,7 @@ async def setup(tree: app_commands.CommandTree):
             await itx.response.send_message("❌ 管理者専用", ephemeral=True)
             return
         embed = discord.Embed(title="📈 ハイ＆ロー", description="""🔍 途中のゲーム → 消しても再表示
-🍀 お試し → 無料
-💳 1P/10P/50P/100P → ポイントで対戦""", color=0x3498DB)
+🍀 お試し → 無料（カウントされません）
+💳 1P/10P/50P/100P → ポイントで対戦（カウントされます）""", color=0x3498DB)
         await itx.response.send_message(embed=embed, view=HighLowPanelView())
         await itx.followup.send("✅ 設置完了", ephemeral=True)
