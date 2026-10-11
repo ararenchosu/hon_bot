@@ -196,18 +196,23 @@ class RoomNameModal(discord.ui.Modal, title="通話ルーム名を入力"):
     )
 
     async def on_submit(self, itx: discord.Interaction):
+        # ✅ 先に応答を返してタイムアウト回避
+        await itx.response.defer(ephemeral=True)
+
         category = itx.guild.get_channel(CATEGORY_ID)
         if not category or not isinstance(category, discord.CategoryChannel):
-            await itx.response.send_message("❌ カテゴリが見つかりません", ephemeral=True)
+            await itx.followup.send("❌ カテゴリが見つかりません", ephemeral=True)
             return
+
         name = str(self.room_name)
         for ch in category.channels:
             if ch.name == name and isinstance(ch, discord.VoiceChannel):
-                await itx.response.send_message(
+                await itx.followup.send(
                     f"❌ 「{name}」は既に存在します。別の名前にしてください。",
                     ephemeral=True
                 )
                 return
+
         overwrites = {
             itx.guild.default_role: discord.PermissionOverwrite(view_channel=True, connect=True),
             itx.user: discord.PermissionOverwrite(
@@ -216,15 +221,18 @@ class RoomNameModal(discord.ui.Modal, title="通話ルーム名を入力"):
                 view_channel=True, connect=True
             )
         }
+
         voice_channel = await category.create_voice_channel(
             name=name, overwrites=overwrites,
             reason=f"一時通話ルーム作成: {itx.user}"
         )
+
         await send_create_log(itx.client, voice_channel.name, itx.user)
-        await itx.response.send_message(
+        await itx.followup.send(
             f"✅ 通話チャンネルを作成しました！\n🔊 {voice_channel.mention}\n⚠️ 2分以内に入室が確認されない場合は自動削除されます。",
             ephemeral=True
         )
+
         active_channels[voice_channel.id] = {
             "task": None,
             "channel_name": voice_channel.name,
@@ -377,12 +385,13 @@ class VoiceCreatePanelView(discord.ui.View):
             )
             desc_in = discord.ui.TextInput(
                 label="説明文",
-                default="⬇️のボタンを押すと通話チャンネルが作成できます。作成者の方は2分以内の入出をお願いします。入出が確認されなかった場合チャンネル自動消去されます。通話終了後5秒でチャンネル消去になります。",
+                default="⬇️のボタンを押すと通話チャンネルが作成できます。作成者の方は2分以内に入室してください。誰も入らないと自動削除されます。全員退出後5秒でチャンネル削除になります。",
                 style=discord.TextStyle.long,
                 required=True
             )
 
             async def on_submit(self, m_itx: discord.Interaction):
+                await m_itx.response.defer(ephemeral=True)
                 colors = [
                     discord.Color.blue(), discord.Color.green(),
                     discord.Color.gold(), discord.Color.orange(),
@@ -409,7 +418,7 @@ async def setup_panel(channel):
     ]
     embed = discord.Embed(
         title="通話チャンネル作成",
-        description="⬇️のボタンを押すと通話チャンネルが作成できます。作成者の方は2分以内の入出をお願いします。入出が確認されなかった場合チャンネル自動消去されます。通話終了後5秒でチャンネル消去になります。",
+        description="⬇️のボタンを押すと通話チャンネルが作成できます。作成者の方は2分以内に入室してください。誰も入らないと自動削除されます。全員退出後5秒でチャンネル削除になります。",
         color=random.choice(colors)
     )
     await channel.send(embed=embed, view=VoiceCreatePanelView())
