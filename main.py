@@ -5,6 +5,7 @@ import os
 from core.database import init_db
 from features.lottery_panel import setup as lottery_setup
 from features.login_bonus import setup as login_bonus_setup
+from features.slots_panel import setup as slots_setup  # ✅ 追加
 import features.othello as othello
 import features.othello_panel as othello_panel
 import features.auth_panel as auth_panel
@@ -49,10 +50,12 @@ async def on_ready():
     try:
         from features.lottery_panel import LotteryPanelView, PointCheckPanelView
         from features.login_bonus import LoginBonusPanelView
+        from features.slots_panel import SlotPanelView  # ✅ 追加
         
         bot.add_view(LotteryPanelView())
         bot.add_view(PointCheckPanelView())
         bot.add_view(LoginBonusPanelView())
+        bot.add_view(SlotPanelView())  # ✅ 追加
         bot.add_view(othello_panel.OthelloPanelView())
         bot.add_view(call_panel.CallPanelView(bot))
         bot.add_view(auth_panel.AuthPanelView())
@@ -63,12 +66,14 @@ async def on_ready():
         print("✅ 全View登録完了")
     except Exception as e:
         print(f"⚠️ View登録エラー: {e}")
-
+    
     print("\n🔄 コマンド登録中...")
     await lottery_setup(tree)
     print("  ✅ lottery_panel → /くじ引きパネル設置 / /ポイント確認パネル設置")
     await login_bonus_setup(tree)
     print("  ✅ login_bonus → /ログインボーナスパネル設置")
+    await slots_setup(tree)  # ✅ 追加
+    print("  ✅ slots_panel → /スロットパネル設置")
     await othello.setup(tree)
     await othello_panel.setup(tree)
     await auth_panel.setup(tree)
@@ -81,22 +86,21 @@ async def on_ready():
     await ranking_panel.setup(tree)
     print("  ✅ ranking_panel → /ポイントランキングパネル設置")
     print("✅ 全コマンド登録完了")
-
+    
     print("\n📋 登録済みコマンド一覧：")
     for cmd in tree.get_commands():
         print(f"   /{cmd.name}")
-
+    
     print("\n🔄 グローバル同期中（反映に時間がかかります）...")
-    # ✅ ギルド指定を削除 → グローバル同期
     synced = await tree.sync()
     print(f"✅ 同期完了！合計 {len(synced)} 件")
     for cmd in synced:
         print(f"   /{cmd.name}")
-
+    
     print("\n🔄 自動更新タスク起動中...")
     asyncio.create_task(ranking_panel.auto_update_task(bot))
     print("✅ ランキング自動更新タスク起動完了")
-
+    
     print("\n🔄 パネル復元中...")
     call_saved = call_panel.get_latest_call_panel()
     if call_saved:
