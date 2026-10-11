@@ -1,7 +1,7 @@
 import discord
 from discord import app_commands
 import asyncio
-import os  # ✅ 追加
+import os
 from core.database import init_db
 from features.lottery_panel import setup as lottery_setup
 from features.login_bonus import setup as login_bonus_setup
@@ -86,11 +86,9 @@ async def on_ready():
     for cmd in tree.get_commands():
         print(f"   /{cmd.name}")
 
-    print("\n🔄 ギルド同期中（即時反映）...")
-    # ✅ 指定されたサーバーID
-    GUILD_ID = 1542788841465978880
-    guild = discord.Object(id=GUILD_ID)
-    synced = await tree.sync(guild=guild)
+    print("\n🔄 グローバル同期中（反映に時間がかかります）...")
+    # ✅ ギルド指定を削除 → グローバル同期
+    synced = await tree.sync()
     print(f"✅ 同期完了！合計 {len(synced)} 件")
     for cmd in synced:
         print(f"   /{cmd.name}")
