@@ -3,9 +3,8 @@ from discord import app_commands
 from core.common import is_owner
 from core.database import get_connection
 
-# ========== 追加：パネル保存/読み込み ==========
+# ========== パネル保存/読み込み ==========
 def save_role_give_panel(channel_id: int, message_id: int, title: str, description: str, color: int):
-    """ロール付与パネル内容を保存（設置時・編集時に自動実行）"""
     conn = get_connection()
     cur = conn.cursor()
     cur.execute("""
@@ -16,7 +15,6 @@ def save_role_give_panel(channel_id: int, message_id: int, title: str, descripti
     conn.close()
 
 def get_latest_role_give_panel():
-    """一番新しい保存内容を取得（編集時の初期値に使用）"""
     conn = get_connection()
     cur = conn.cursor()
     cur.execute("""
@@ -56,11 +54,22 @@ def add_selectable_role(guild_id, role_id, role_name):
     conn.commit()
     conn.close()
 
+def remove_selectable_role(guild_id, role_id):
+    """選択候補からロールを削除"""
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute(
+        "DELETE FROM select_roles WHERE guild_id=? AND role_id=?",
+        (str(guild_id), str(role_id))
+    )
+    conn.commit()
+    conn.close()
+
 class RoleSelectPanelView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="🎖️ ロールを選択して取得", style=discord.ButtonStyle.primary, custom_id="rpanel:select")
+    @discord.ui.button(label="🎖️ ロールを選択して取得", style=discord.ButtonStyle.primary, custom_id="rpanel:select", row=0)
     async def select_role(self, itx: discord.Interaction, btn: discord.ui.Button):
         roles = get_selectable_roles(itx.guild_id)
         if not roles:
@@ -98,16 +107,46 @@ class RoleSelectPanelView(discord.ui.View):
             "取得するロールを選択してください：", view=RoleSelectView(), ephemeral=True
         )
 
-    @discord.ui.button(label="✏️ パネル編集", style=discord.ButtonStyle.secondary, custom_id="rpanel:edit")
+    @discord.ui.button(label="🗑️ 選択候補から削除", style=discord.ButtonStyle.danger, custom_id="rpanel:remove", row=0)
+    async def remove_role_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
+        if not is_owner(itx):
+            await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
+            return
+        roles = get_selectable_roles(itx.guild_id)
+        if not roles:
+            await itx.response.send_message(
+                "❌ 登録されているロールがありません", ephemeral=True
+            )
+            return
+        class RemoveSelectView(discord.ui.View):
+            def __init__(self):
+                super().__init__()
+                self.add_item(discord.ui.Select(
+                    placeholder="削除するロールを選択",
+                    max_values=1,
+                    options=[discord.SelectOption(label=name, value=rid) for rid, name in roles]
+                ))
+            async def interaction_check(self, inter: discord.Interaction) -> bool:
+                rid = self.children[0].values[0]
+                r = inter.guild.get_role(int(rid))
+                remove_selectable_role(inter.guild_id, rid)
+                await inter.response.send_message(
+                    f"🗑️ 「{r.name if r else '不明なロール'}」を選択候補から削除しました",
+                    ephemeral=True
+                )
+                return True
+        await itx.response.send_message(
+            "削除するロールを選択してください：", view=RemoveSelectView(), ephemeral=True
+        )
+
+    @discord.ui.button(label="✏️ パネル編集", style=discord.ButtonStyle.secondary, custom_id="rpanel:edit", row=1)
     async def edit_panel(self, itx: discord.Interaction, btn: discord.ui.Button):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
             return
-        # ✅ 最新の内容を初期値に表示
         latest = get_latest_role_give_panel()
         default_title = latest["title"] if latest else "🎖️ ロール選択"
         default_desc = latest["description"] if latest else "ボタンから必要なロールを選択して取得してください。"
-
         class EditModal(discord.ui.Modal, title="ロールパネル編集"):
             title_in = discord.ui.TextInput(label="タイトル", default=default_title)
             desc_in = discord.ui.TextInput(
@@ -119,7 +158,6 @@ class RoleSelectPanelView(discord.ui.View):
                     title=str(self.title_in), description=str(self.desc_in), color=0x3498db
                 )
                 await inter.response.edit_message(embed=embed, view=RoleSelectPanelView())
-                # ✅ 編集したら自動保存
                 save_role_give_panel(
                     inter.channel_id,
                     inter.message.id,
@@ -130,7 +168,7 @@ class RoleSelectPanelView(discord.ui.View):
                 await inter.followup.send("✅ 更新・保存完了", ephemeral=True)
         await itx.response.send_modal(EditModal())
 
-    @discord.ui.button(label="➕ 付与ロール追加", style=discord.ButtonStyle.success, custom_id="rpanel:add")
+    @discord.ui.button(label="➕ 付与ロール追加", style=discord.ButtonStyle.success, custom_id="rpanel:add", row=1)
     async def add_role_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
@@ -158,11 +196,15 @@ async def setup(tree):
             return
         embed = discord.Embed(
             title="🎖️ ロール選択",
-            description="⬇️のボタンを押して、必要なロールを選択して取得してください。\n誤ったロールを付けた際はロール剥奪でロールを外すことができます。",
+            description="""⬇️のボタンを押して、必要なロールを選択して取得してください。
+誤ったロールを付けた際はロール剥奪でロールを外すことができます。
+
+🎖️ ロールを選択して取得 → ユーザーがロール取得
+🗑️ 選択候補から削除 → オーナー専用：パネルからロール自体を削除
+➕ 付与ロール追加 → オーナー専用：新しいロールを候補に追加""",
             color=0x3498db
         )
         await itx.response.send_message(embed=embed, view=RoleSelectPanelView())
-        # ✅ 新規設置時に自動保存
         msg = await itx.original_response()
         save_role_give_panel(
             itx.channel_id,
