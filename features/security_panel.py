@@ -3,6 +3,7 @@ from discord import app_commands
 from datetime import datetime, timedelta, timezone
 from core.common import is_owner
 from core.database import get_connection
+import asyncio  # ✅ 追加
 
 JST = timezone(timedelta(hours=9))
 MOD_LOG_CHANNEL_ID = None  # ← ログ用チャンネルIDを入れてください
@@ -12,7 +13,6 @@ MUTE_ROLE_NAME = "ミュート"
 def init_security_tables():
     conn = get_connection()
     cur = conn.cursor()
-
     # 禁止ワード
     cur.execute("""
         CREATE TABLE IF NOT EXISTS forbidden_words (
@@ -22,7 +22,6 @@ def init_security_tables():
             level TEXT DEFAULT 'warning'
         )
     """)
-
     # 監視対象チャンネル
     cur.execute("""
         CREATE TABLE IF NOT EXISTS monitored_channels (
@@ -31,7 +30,6 @@ def init_security_tables():
             added_at TEXT NOT NULL
         )
     """)
-
     # 自動監視設定
     cur.execute("""
         CREATE TABLE IF NOT EXISTS security_settings (
@@ -41,7 +39,6 @@ def init_security_tables():
     """)
     for key in ['spam_monitor', 'link_monitor', 'word_monitor']:
         cur.execute("INSERT OR IGNORE INTO security_settings VALUES (?, 'off')", (key,))
-
     # ミュート管理
     cur.execute("""
         CREATE TABLE IF NOT EXISTS active_mutes (
@@ -52,7 +49,6 @@ def init_security_tables():
             mute_type TEXT DEFAULT 'timed'
         )
     """)
-
     # 期限付きBAN管理
     cur.execute("""
         CREATE TABLE IF NOT EXISTS active_tempbans (
@@ -62,7 +58,6 @@ def init_security_tables():
             reason TEXT
         )
     """)
-
     # 管理履歴
     cur.execute("""
         CREATE TABLE IF NOT EXISTS security_log (
@@ -76,7 +71,6 @@ def init_security_tables():
             operator_name TEXT
         )
     """)
-
     # 注意文テンプレート
     cur.execute("""
         CREATE TABLE IF NOT EXISTS notice_templates (
@@ -94,7 +88,6 @@ def init_security_tables():
         ]
         for t, c in defaults:
             cur.execute("INSERT INTO notice_templates (title, content) VALUES (?, ?)", (t, c))
-
     conn.commit()
     conn.close()
 
@@ -278,7 +271,6 @@ class ConfirmModal(discord.ui.Modal):
         self.callback = callback
         self.reason_in = discord.ui.TextInput(label="理由", required=True, max_length=100)
         self.add_item(self.reason_in)
-
     async def on_submit(self, itx):
         await self.callback(itx, self.reason_in.value)
 
@@ -286,7 +278,6 @@ class ConfirmModal(discord.ui.Modal):
 class LockChannelView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=120)
-
     @discord.ui.button(label="🔒 ロック実行", style=discord.ButtonStyle.danger)
     async def lock_btn(self, itx: discord.Interaction, btn):
         if not is_owner(itx):
@@ -304,7 +295,6 @@ class LockChannelView(discord.ui.View):
                 view=UnlockChannelView()
             )
         await itx.response.send_modal(ConfirmModal("チャンネルロック", _lock))
-
     @discord.ui.button(label="❌ キャンセル", style=discord.ButtonStyle.secondary)
     async def cancel_btn(self, itx, btn):
         await itx.response.edit_message(content="キャンセルしました", view=None)
@@ -312,7 +302,6 @@ class LockChannelView(discord.ui.View):
 class UnlockChannelView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
-
     @discord.ui.button(label="🔓 解除", style=discord.ButtonStyle.success, custom_id="sec:unlock")
     async def unlock_btn(self, itx: discord.Interaction, btn):
         if not is_owner(itx):
@@ -333,7 +322,6 @@ class MuteUserSelectView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=120)
         self.add_item(discord.ui.UserSelect(placeholder="対象ユーザーを選択"))
-
     async def interaction_check(self, itx):
         target = self.children[0].values[0]
         view = MuteDurationView(target)
@@ -347,7 +335,6 @@ class MuteDurationView(discord.ui.View):
     def __init__(self, target):
         super().__init__(timeout=120)
         self.target = target
-
     @discord.ui.button(label="1時間", style=discord.ButtonStyle.primary)
     async def h1(self, itx, btn): await self._mute(itx, 1)
     @discord.ui.button(label="6時間", style=discord.ButtonStyle.primary)
@@ -358,7 +345,6 @@ class MuteDurationView(discord.ui.View):
     async def d7(self, itx, btn): await self._mute(itx, 24*7)
     @discord.ui.button(label="無期限", style=discord.ButtonStyle.danger)
     async def perm(self, itx, btn): await self._mute(itx, None)
-
     async def _mute(self, itx, hours):
         end_time = (datetime.now(JST) + timedelta(hours=hours)).isoformat() if hours else None
         async def _confirm(itx, reason):
@@ -387,7 +373,6 @@ class TempBanSelectView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=120)
         self.add_item(discord.ui.UserSelect(placeholder="対象ユーザーを選択"))
-
     async def interaction_check(self, itx):
         target = self.children[0].values[0]
         view = TempBanDurationView(target)
@@ -401,7 +386,6 @@ class TempBanDurationView(discord.ui.View):
     def __init__(self, target):
         super().__init__(timeout=120)
         self.target = target
-
     @discord.ui.button(label="3日", style=discord.ButtonStyle.primary)
     async def d3(self, itx, btn): await self._ban(itx, 3)
     @discord.ui.button(label="7日", style=discord.ButtonStyle.primary)
@@ -410,7 +394,6 @@ class TempBanDurationView(discord.ui.View):
     async def d30(self, itx, btn): await self._ban(itx, 30)
     @discord.ui.button(label="無期限", style=discord.ButtonStyle.danger)
     async def perm(self, itx, btn): await self._ban(itx, None)
-
     async def _ban(self, itx, days):
         end_time = (datetime.now(JST) + timedelta(days=days)).isoformat() if days else None
         async def _confirm(itx, reason):
@@ -439,7 +422,6 @@ class SpamDeleteView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=120)
         self.add_item(discord.ui.UserSelect(placeholder="対象ユーザーを選択"))
-
     async def interaction_check(self, itx):
         target = self.children[0].values[0]
         view = SpamDeleteCountView(target)
@@ -453,14 +435,12 @@ class SpamDeleteCountView(discord.ui.View):
     def __init__(self, target):
         super().__init__(timeout=120)
         self.target = target
-
     @discord.ui.button(label="直近10件", style=discord.ButtonStyle.primary)
     async def c10(self, itx, btn): await self._delete(itx, 10)
     @discord.ui.button(label="直近30件", style=discord.ButtonStyle.primary)
     async def c30(self, itx, btn): await self._delete(itx, 30)
     @discord.ui.button(label="直近50件", style=discord.ButtonStyle.primary)
     async def c50(self, itx, btn): await self._delete(itx, 50)
-
     async def _delete(self, itx, limit):
         deleted = 0
         async for msg in itx.channel.history(limit=200):
@@ -479,7 +459,6 @@ class SpamDeleteCountView(discord.ui.View):
 class EmergencyLockView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=120)
-
     @discord.ui.button(label="🚨 封鎖実行", style=discord.ButtonStyle.danger)
     async def lock_btn(self, itx, btn):
         if not is_owner(itx):
@@ -502,7 +481,6 @@ class EmergencyLockView(discord.ui.View):
 class EmergencyUnlockView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
-
     @discord.ui.button(label="✅ 封鎖解除", style=discord.ButtonStyle.success, custom_id="sec:emergency_unlock")
     async def unlock_btn(self, itx, btn):
         if not is_owner(itx):
@@ -523,7 +501,6 @@ class EmergencyUnlockView(discord.ui.View):
 class MonitoredChannelView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=120)
-
     @discord.ui.button(label="➕ 追加", style=discord.ButtonStyle.success)
     async def add_btn(self, itx, btn):
         class AddView(discord.ui.View):
@@ -536,7 +513,6 @@ class MonitoredChannelView(discord.ui.View):
                 await itx.response.send_message(f"✅ {ch.mention} を監視対象に追加しました", ephemeral=True)
                 return True
         await itx.response.send_message("追加するチャンネルを選択", view=AddView(), ephemeral=True)
-
     @discord.ui.button(label="➖ 除外", style=discord.ButtonStyle.danger)
     async def remove_btn(self, itx, btn):
         ch_list = get_monitored_channels()
@@ -553,44 +529,79 @@ class MonitoredChannelView(discord.ui.View):
                 remove_monitored_channel(cid)
                 await itx.response.send_message(f"✅ 除外しました", ephemeral=True)
         await itx.response.send_message("除外するチャンネルを選択", view=RemoveView(), ephemeral=True)
-
     @discord.ui.button(label="🔙 戻る", style=discord.ButtonStyle.secondary)
     async def back_btn(self, itx, btn):
         embed = await build_security_embed()
         await itx.response.edit_message(embed=embed, view=SecurityMainView())
 
-# ========== ⑦ 禁止ワード管理 ==========
+# ========== ⑦ 禁止ワード管理画面 ==========
 class ForbiddenWordView(discord.ui.View):
     def __init__(self):
-        super().__init__(timeout=120)
+        super().__init__(timeout=180)
 
-    @discord.ui.button(label="➕ 追加", style=discord.ButtonStyle.success)
+    async def build_embed(self):
+        words = get_forbidden_words()
+        if words:
+            word_list = "\n".join([f" [{wid}] `{word}`" for wid, word, _, _ in words])
+        else:
+            word_list = "⚠️ 登録された禁止ワードはありません"
+        status = get_setting('word_monitor')
+        embed = discord.Embed(
+            title="🔍 禁止ワード管理",
+            description=word_list,
+            color=0x3498DB
+        )
+        embed.set_footer(text=f"現在の状態：{'✅ 検知有効' if status=='on' else '❌ 検知無効'}")
+        return embed
+
+    @discord.ui.button(label="➕ 新規登録", style=discord.ButtonStyle.success, row=0)
     async def add_btn(self, itx, btn):
-        class AddModal(discord.ui.Modal, title="禁止ワード追加"):
-            word = discord.ui.TextInput(label="禁止する言葉", required=True)
+        class AddModal(discord.ui.Modal, title="禁止ワード新規登録"):
+            word = discord.ui.TextInput(label="禁止する言葉", required=True, max_length=100)
             async def on_submit(self, itx):
                 add_forbidden_word(self.word.value)
-                await itx.response.send_message(f"✅ 「{self.word.value}」を追加しました", ephemeral=True)
+                await itx.response.send_message(f"✅ 「{self.word.value}」を登録しました", ephemeral=True)
         await itx.response.send_modal(AddModal())
+        await asyncio.sleep(0.4)
+        embed = await self.build_embed()
+        await itx.edit_original_response(embed=embed, view=self)
 
-    @discord.ui.button(label="➖ 削除", style=discord.ButtonStyle.danger)
+    @discord.ui.button(label="➖ 登録解除", style=discord.ButtonStyle.danger, row=0)
     async def remove_btn(self, itx, btn):
         words = get_forbidden_words()
         if not words:
             await itx.response.send_message("❌ 登録されていません", ephemeral=True)
             return
         class RemoveView(discord.ui.View):
-            def __init__(self):
-                super().__init__()
-                opts = [discord.SelectOption(label=f"{wid}: {word[:20]}", value=str(wid)) for wid, word, _, _ in words]
-                self.add_item(discord.ui.Select(placeholder="削除するワード", options=opts))
+            def __init__(self, parent_view):
+                super().__init__(timeout=120)
+                self.parent = parent_view
+                opts = [discord.SelectOption(label=f"{word[:25]}", value=str(wid)) for wid, word, _, _ in words]
+                self.add_item(discord.ui.Select(placeholder="解除するワードを選択", options=opts))
             async def callback(self, itx):
                 wid = int(self.children[0].values[0])
                 remove_forbidden_word(wid)
-                await itx.response.send_message(f"✅ 削除しました", ephemeral=True)
-        await itx.response.send_message("削除するワードを選択", view=RemoveView(), ephemeral=True)
+                await itx.response.send_message("✅ 登録を解除しました", ephemeral=True)
+                await asyncio.sleep(0.4)
+                embed = await self.parent.build_embed()
+                await itx.edit_original_response(embed=embed, view=self.parent)
+        await itx.response.send_message("解除するワードを選択してください", view=RemoveView(self), ephemeral=True)
 
-    @discord.ui.button(label="🔙 戻る", style=discord.ButtonStyle.secondary)
+    @discord.ui.button(label="❌ 状態読込中...", style=discord.ButtonStyle.secondary, row=1, custom_id="fw:toggle")
+    async def toggle_btn(self, itx, btn):
+        new_val = 'on' if get_setting('word_monitor') == 'off' else 'off'
+        set_setting('word_monitor', new_val)
+        # ボタンのラベルを更新
+        if new_val == 'on':
+            btn.label = '✅ 検知中 → OFFにする'
+            btn.style = discord.ButtonStyle.success
+        else:
+            btn.label = '❌ 停止中 → ONにする'
+            btn.style = discord.ButtonStyle.secondary
+        embed = await self.build_embed()
+        await itx.response.edit_message(embed=embed, view=self)
+
+    @discord.ui.button(label="🔙 メインに戻る", style=discord.ButtonStyle.secondary, row=1)
     async def back_btn(self, itx, btn):
         embed = await build_security_embed()
         await itx.response.edit_message(embed=embed, view=SecurityMainView())
@@ -600,7 +611,6 @@ class SendNoticeView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=120)
         self.add_item(discord.ui.UserSelect(placeholder="対象ユーザーを選択"))
-
     async def interaction_check(self, itx):
         target = self.children[0].values[0]
         templates = get_templates()
@@ -636,7 +646,7 @@ async def build_stats_embed():
     embed.add_field(name="⚠️ 注意", value=str(sum(v for k, v in stats.items() if k.startswith("注意送信"))), inline=True)
     return embed
 
-# ========== メインパネル ==========
+# ========== 埋め込み作成 ==========
 async def build_security_embed():
     ch_list = get_monitored_channels()
     ch_text = "\n".join([f"• <#{cid}> {name}" for cid, name in ch_list]) if ch_list else "⚠️ 登録なし（全チャンネル未監視）"
@@ -647,6 +657,7 @@ async def build_security_embed():
     embed.add_field(name="🔍 禁止ワード", value=f"✅ {get_setting('word_monitor')}" if get_setting('word_monitor')=='on' else f"❌ {get_setting('word_monitor')}", inline=True)
     return embed
 
+# ========== メインパネル ==========
 class SecurityMainView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -720,15 +731,14 @@ class SecurityMainView(discord.ui.View):
         embed = await build_security_embed()
         await itx.response.edit_message(embed=embed, view=SecurityMainView())
 
-    @discord.ui.button(label="🔍 禁止ワード", style=discord.ButtonStyle.success, row=2)
-    async def word_btn(self, itx, btn):
+    @discord.ui.button(label="🔍 禁止ワード管理", style=discord.ButtonStyle.primary, row=2)
+    async def wordmanage_btn(self, itx, btn):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用", ephemeral=True)
             return
-        new_val = 'on' if get_setting('word_monitor') == 'off' else 'off'
-        set_setting('word_monitor', new_val)
-        embed = await build_security_embed()
-        await itx.response.edit_message(embed=embed, view=SecurityMainView())
+        view = ForbiddenWordView()
+        embed = await view.build_embed()
+        await itx.response.send_message(embed=embed, view=view, ephemeral=True)
 
     # ===== 4行目 =====
     @discord.ui.button(label="✍️ 注意文送信", style=discord.ButtonStyle.secondary, row=3)
@@ -761,7 +771,8 @@ async def setup(tree: app_commands.CommandTree):
 🚨 緊急封鎖 → サーバー全体を一時停止
 📺 監視チャンネル → 自動検知の対象を選択
 
-⚡ 高速投稿 / 🔗 リンク制限 / 🔍 禁止ワード → ON/OFF
+⚡ 高速投稿 / 🔗 リンク制限 → ON/OFF
+🔍 禁止ワード管理 → 一覧・登録・解除・ON/OFF
 ✍️ 注意文送信 → 定型文をDM送信
 📊 状況サマリー → 集計表示
 
