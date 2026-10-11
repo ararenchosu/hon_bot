@@ -64,36 +64,35 @@ async def on_ready():
     await lottery_setup(tree)
     print("  ✅ lottery_panel（くじ引き・ポイント確認）")
     await othello.setup(tree)
-    print("  ✅ othello")
     await othello_panel.setup(tree)
-    print("  ✅ othello_panel")
     await auth_panel.setup(tree)
-    print("  ✅ auth_panel")
     await role_panel.setup(tree)
-    print("  ✅ role_panel")
     await revoke_panel.setup(tree)
-    print("  ✅ revoke_panel")
     await call_panel.setup(tree, bot)
-    print("  ✅ call_panel")
     await welcome_leave.setup(bot)
-    print("  ✅ welcome_leave")
     print("✅ 全コマンド登録完了")
 
-    # ✅ 登録済みコマンドを先に表示
-    print("\n📋 登録されているコマンド（同期前）：")
-    for cmd in tree.get_commands():
+    # ✅ 登録済みコマンドを表示（これが本当の一覧です）
+    print("\n📋 登録されているコマンド：")
+    all_cmds = tree.get_commands()
+    for cmd in all_cmds:
         print(f"   /{cmd.name} — {cmd.description}")
+    print(f"✅ 合計 {len(all_cmds)} 件\n")
 
-    # ✅ ギルド同期
+    # ✅ ギルド同期（IDは正しいものを使用）
     GUILD_ID = 1542788841465978880
-    print(f"\n🔄 ギルド {GUILD_ID} に同期中...")
+    print(f"🔄 ギルド {GUILD_ID} に反映中...")
+    
+    # force=True で強制的に上書き
     synced = await tree.sync(guild=discord.Object(id=GUILD_ID))
-
-    # ✅ 同期後の一覧を表示
-    print(f"\n✅ 同期完了！反映されたコマンド一覧（{len(synced)}件）：")
-    if not synced:
-        print("   ⚠️ 0件です！コマンドが正しく登録されていません")
-    for cmd in synced:
+    
+    # ✅ ギルド側の実際のコマンドを取得して表示
+    guild = discord.Object(id=GUILD_ID)
+    guild_cmds = await tree.fetch_commands(guild=guild)
+    print(f"\n✅ サーバーに反映されたコマンド一覧（{len(guild_cmds)}件）：")
+    if not guild_cmds:
+        print("   ⚠️ まだ反映されていません。少し待ってから再度お試しください。")
+    for cmd in guild_cmds:
         print(f"   /{cmd.name} — {cmd.description}")
     print()
 
