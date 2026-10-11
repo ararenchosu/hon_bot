@@ -96,10 +96,7 @@ class PointSetModal(discord.ui.Modal, title="ポイントを直接設定"):
         embed.set_thumbnail(url=self.target_user.display_avatar.url)
         await itx.response.send_message(embed=embed, ephemeral=True)
 
-class TargetUserSelect(discord.ui.UserSelect):
-    def __init__(self, action_label):
-        super().__init__(placeholder=f"ユーザーを選択 → {action_label}")
-
+# ✅ ユーザー選択をModalに直接変更（古いバージョン対応）
 class PointAdminView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -109,16 +106,9 @@ class PointAdminView(discord.ui.View):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用", ephemeral=True)
             return
-        
-        class AddSelectView(discord.ui.View):
-            @discord.ui.user_select(label="ユーザー選択")
-            async def select_user(self, select: discord.ui.UserSelect, sel_itx: discord.Interaction):
-                target = select.values[0]
-                await sel_itx.response.send_modal(PointAmountModal(target))
-        
         await itx.response.send_message(
-            "➕ ポイントを付与するユーザーを選択してください",
-            view=AddSelectView(),
+            "➕ 対象のユーザーをメンションして数字を入力してください。\n"
+            "例：`@ユーザー 100` または `@ユーザー -50`",
             ephemeral=True
         )
 
@@ -127,16 +117,9 @@ class PointAdminView(discord.ui.View):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用", ephemeral=True)
             return
-        
-        class SetSelectView(discord.ui.View):
-            @discord.ui.user_select(label="ユーザー選択")
-            async def select_user(self, select: discord.ui.UserSelect, sel_itx: discord.Interaction):
-                target = select.values[0]
-                await sel_itx.response.send_modal(PointSetModal(target))
-        
         await itx.response.send_message(
-            "✏️ ポイントを設定するユーザーを選択してください",
-            view=SetSelectView(),
+            "✏️ 対象のユーザーをメンションして設定する数字を入力してください。\n"
+            "例：`@ユーザー 500`",
             ephemeral=True
         )
 
@@ -145,58 +128,85 @@ class PointAdminView(discord.ui.View):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用", ephemeral=True)
             return
-        
-        class CheckSelectView(discord.ui.View):
-            @discord.ui.user_select(label="ユーザー選択")
-            async def select_user(self, select: discord.ui.UserSelect, sel_itx: discord.Interaction):
-                target = select.values[0]
-                pts = get_points(target.id)
-                await sel_itx.response.send_message(
-                    f"💳 {target.mention} のポイント：**{pts}P**",
-                    ephemeral=True
-                )
-        
         await itx.response.send_message(
-            "💳 ポイントを確認するユーザーを選択してください",
-            view=CheckSelectView(),
+            "💳 確認したいユーザーをメンションしてください。\n"
+            "例：`@ユーザー`",
             ephemeral=True
         )
 
-    @discord.ui.button(label="🗑️ ポイントを0にリセット", style=discord.ButtonStyle.danger, custom_id="point_admin:reset", row=1)
+    @discord.ui.button(label="🗑️ 0にリセット", style=discord.ButtonStyle.danger, custom_id="point_admin:reset", row=1)
     async def reset_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用", ephemeral=True)
             return
-        
-        class ResetSelectView(discord.ui.View):
-            @discord.ui.user_select(label="ユーザー選択")
-            async def select_user(self, select: discord.ui.UserSelect, sel_itx: discord.Interaction):
-                target = select.values[0]
-                set_points(target.id, 0)
-                await sel_itx.response.send_message(
-                    f"🗑️ {target.mention} のポイントを0にリセットしました",
-                    ephemeral=True
-                )
-        
         await itx.response.send_message(
-            "🗑️ ポイントを0にするユーザーを選択してください",
-            view=ResetSelectView(),
+            "🗑️ 0にするユーザーをメンションしてください。\n"
+            "例：`@ユーザー`",
             ephemeral=True
         )
 
 async def setup(tree: app_commands.CommandTree):
+    @tree.command(name="ポイント付与", description="ユーザーにポイントを付与（オーナー専用）")
+    @app_commands.check(is_owner)
+    async def cmd_add(itx: discord.Interaction, user: discord.User, amount: int):
+        new_total = add_points(user.id, amount)
+        embed = discord.Embed(
+            title="✅ ポイント付与完了",
+            description=f"{user.mention} に {amount:+d}P しました\n現在: **{new_total}P**",
+            color=0x2ECC71,
+            timestamp=datetime.now(JST)
+        )
+        embed.set_thumbnail(url=user.display_avatar.url)
+        await itx.response.send_message(embed=embed, ephemeral=True)
+
+    @tree.command(name="ポイント設定", description="ユーザーのポイントを直接設定（オーナー専用）")
+    @app_commands.check(is_owner)
+    async def cmd_set(itx: discord.Interaction, user: discord.User, amount: int):
+        new_total = set_points(user.id, amount)
+        embed = discord.Embed(
+            title="✅ ポイント設定完了",
+            description=f"{user.mention} を {new_total}P に設定しました",
+            color=0x3498DB,
+            timestamp=datetime.now(JST)
+        )
+        embed.set_thumbnail(url=user.display_avatar.url)
+        await itx.response.send_message(embed=embed, ephemeral=True)
+
+    @tree.command(name="ポイント確認", description="ユーザーのポイントを確認（オーナー専用）")
+    @app_commands.check(is_owner)
+    async def cmd_check(itx: discord.Interaction, user: discord.User):
+        pts = get_points(user.id)
+        embed = discord.Embed(
+            title="💳 ポイント確認",
+            description=f"{user.mention} のポイント：**{pts}P**",
+            color=0xF1C40F,
+            timestamp=datetime.now(JST)
+        )
+        embed.set_thumbnail(url=user.display_avatar.url)
+        await itx.response.send_message(embed=embed, ephemeral=True)
+
+    @tree.command(name="ポイントリセット", description="ユーザーのポイントを0にリセット（オーナー専用）")
+    @app_commands.check(is_owner)
+    async def cmd_reset(itx: discord.Interaction, user: discord.User):
+        set_points(user.id, 0)
+        embed = discord.Embed(
+            title="🗑️ ポイントリセット完了",
+            description=f"{user.mention} のポイントを0にしました",
+            color=0xE74C3C,
+            timestamp=datetime.now(JST)
+        )
+        embed.set_thumbnail(url=user.display_avatar.url)
+        await itx.response.send_message(embed=embed, ephemeral=True)
+
     @tree.command(name="ポイント付与パネル設置", description="ポイント管理パネル設置（オーナー専用）")
-    async def cmd(itx: discord.Interaction):
-        if not is_owner(itx):
-            await itx.response.send_message("❌ オーナー専用コマンドです", ephemeral=True)
-            return
-        
+    @app_commands.check(is_owner)
+    async def cmd_panel(itx: discord.Interaction):
         embed = discord.Embed(
             title="💳 ポイント管理パネル",
-            description="""➕ **ポイントを付与** → 選択したユーザーに増減（マイナス可）
-✏️ **ポイントを設定** → 値を直接書き換え
-💳 **ポイント確認** → 現在の所持数を表示
-🗑️ **0にリセット** → 選択したユーザーを0Pに
+            description="""➕ **/ポイント付与 @ユーザー 数値** → ポイント増減
+✏️ **/ポイント設定 @ユーザー 数値** → 値を直接設定
+💳 **/ポイント確認 @ユーザー** → 現在のポイント表示
+🗑️ **/ポイントリセット @ユーザー** → 0にリセット
 🔒 オーナー以外は操作できません""",
             color=0xF1C40F,
             timestamp=datetime.now(JST)
