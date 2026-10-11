@@ -2,9 +2,8 @@ import discord
 from discord import app_commands
 import os
 from core.database import init_db
-
 from features.lottery_panel import setup as lottery_setup
-from features.login_bonus import setup as login_bonus_setup  # ✅ 追加
+from features.login_bonus import setup as login_bonus_setup
 import features.othello as othello
 import features.othello_panel as othello_panel
 import features.auth_panel as auth_panel
@@ -12,6 +11,8 @@ import features.role_panel as role_panel
 import features.revoke_panel as revoke_panel
 import features.call_panel as call_panel
 import features.welcome_leave as welcome_leave
+# ✅ 一時通話チャンネル機能を追加
+import features.voice_channel_panel as voice_panel
 
 BOT_TOKEN = os.getenv("DISCORD_TOKEN")
 if not BOT_TOKEN:
@@ -27,6 +28,7 @@ intents.members = True
 
 bot = discord.Client(intents=intents)
 tree = app_commands.CommandTree(bot)
+
 
 async def restore_panel(channel_id, message_id, ViewClass, *view_args):
     try:
@@ -49,15 +51,17 @@ async def on_ready():
     # ✅ View登録
     try:
         from features.lottery_panel import LotteryPanelView, PointCheckPanelView
-        from features.login_bonus import LoginBonusPanelView  # ✅ 追加
+        from features.login_bonus import LoginBonusPanelView
         bot.add_view(LotteryPanelView())
         bot.add_view(PointCheckPanelView())
-        bot.add_view(LoginBonusPanelView())  # ✅ 追加
+        bot.add_view(LoginBonusPanelView())
         bot.add_view(othello_panel.OthelloPanelView())
         bot.add_view(call_panel.CallPanelView(bot))
         bot.add_view(auth_panel.AuthPanelView())
         bot.add_view(role_panel.RoleSelectPanelView())
         bot.add_view(revoke_panel.RoleRevokePanelView())
+        # ✅ 一時通話パネルのViewを登録
+        bot.add_view(voice_panel.VoiceCreatePanelView())
         print("✅ 全View登録完了")
     except Exception as e:
         print(f"⚠️ View登録エラー: {e}")
@@ -66,7 +70,7 @@ async def on_ready():
     print("\n🔄 コマンド登録中...")
     await lottery_setup(tree)
     print("  ✅ lottery_panel → /くじ引きパネル設置 / /ポイント確認パネル設置")
-    await login_bonus_setup(tree)  # ✅ 追加
+    await login_bonus_setup(tree)
     print("  ✅ login_bonus → /ログインボーナスパネル設置")
     await othello.setup(tree)
     await othello_panel.setup(tree)
@@ -75,6 +79,9 @@ async def on_ready():
     await revoke_panel.setup(tree)
     await call_panel.setup(tree, bot)
     await welcome_leave.setup(bot)
+    # ✅ 一時通話パネルのコマンドを登録
+    await voice_panel.setup(tree)
+    print("  ✅ voice_channel_panel → /通話パネル設置")
     print("✅ 全コマンド登録完了")
 
     # ✅ 登録確認
