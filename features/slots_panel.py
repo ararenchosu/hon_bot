@@ -5,20 +5,21 @@ import json
 import os
 from datetime import datetime, timedelta, timezone
 from core.common import is_owner
-from core.game_stats import increment
 
 JST = timezone(timedelta(hours=9))
 DATA_FILE = "kn_points_data.json"
 SLOT_RESULT_CHANNEL_ID = 1558766953114370158
 
 SYMBOLS = ["🍒", "🍋", "🔔", "💎", "7️⃣"]
+
+# ✅ 元の数字をそれぞれ15倍に
 PAYOUT = {
-    ("💎", "💎", "💎"): 10,
-    ("7️⃣", "7️⃣", "7️⃣"): 7,
-    ("🔔", "🔔", "🔔"): 5,
-    ("🍋", "🍋", "🍋"): 3,
-    ("🍒", "🍒", "🍒"): 2,
-    ("🍒", "🍒"): 1,
+    ("💎", "💎", "💎"): 10 * 15,   # 10倍 → 150倍
+    ("7️⃣", "7️⃣", "7️⃣"): 7 * 15,   # 7倍 → 105倍
+    ("🔔", "🔔", "🔔"): 5 * 15,     # 5倍 → 75倍
+    ("🍋", "🍋", "🍋"): 3 * 15,    # 3倍 → 45倍
+    ("🍒", "🍒", "🍒"): 2 * 15,    # 2倍 → 30倍
+    ("🍒", "🍒"): 1 * 15,          # 1倍 → 15倍
 }
 
 def load_data():
@@ -61,7 +62,7 @@ async def send_result_embed(client, user, reels, result_text, change, total, bet
         print(f"⚠️ 結果チャンネルが見つかりません: {SLOT_RESULT_CHANNEL_ID}")
         return
     
-    is_free = bet == 0  # bet=0 はお試し
+    is_free = bet == 0
     
     embed = discord.Embed(
         title="🎰 スロット結果" if not is_free else "🎰 スロット結果（お試し）",
@@ -80,14 +81,6 @@ async def send_result_embed(client, user, reels, result_text, change, total, bet
     
     embed.set_thumbnail(url=user.display_avatar.url)
     await channel.send(embed=embed)
-    
-    # ✅ お試し以外の場合だけカウントUP
-    if not is_free:
-        count = increment("slot")
-        print(f"🎰 スロット: {count}回 に更新")
-        await channel.edit(name=f"🎰・スロット・{count}回", reason="プレイ回数更新")
-    else:
-        print("🍀 お試しプレイ → カウントしません")
 
 games = {}
 
@@ -218,10 +211,10 @@ async def setup(tree: app_commands.CommandTree):
             description=(
                 "🔍 **途中のゲーム** → 消しても再表示\n"
                 "💳 **ポイント確認** → 現在の所持ポイントを表示\n"
-                "🍀 **お試し** → 無料（カウントされません）\n"
-                "🎰 **1P/10P/50P/100P** → ポイントで対戦（カウントされます）\n"
-                "💎💎💎：10倍 / 7️⃣7️⃣7️⃣：7倍 / 🔔🔔🔔：5倍\n"
-                "🍋🍋🍋：3倍 / 🍒🍒🍒：2倍 / 🍒🍒：1倍"
+                "🍀 **お試し** → 無料プレイ\n"
+                "🎰 **1P/10P/50P/100P** → ポイントで対戦\n"
+                "💎💎💎：150倍 / 7️⃣7️⃣7️⃣：105倍 / 🔔🔔🔔：75倍\n"
+                "🍋🍋🍋：45倍 / 🍒🍒🍒：30倍 / 🍒🍒：15倍"
             ),
             color=0xFFD700
         )
