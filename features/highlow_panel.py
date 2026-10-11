@@ -11,8 +11,13 @@ JST = timezone(timedelta(hours=9))
 DATA_FILE = "kn_points_data.json"
 HL_RESULT_CHANNEL_ID = 1558772472881488004
 
-RANKS = ["2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K", "A"]
-CARD_VALUES = {r: i+2 for i, r in enumerate(RANKS)}
+# ✅ 2=2 ～ K=13、A=1 に変更 → 1～13に収まる
+RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"]
+CARD_VALUES = {
+    "A": 1,
+    "2": 2, "3": 3, "4": 4, "5": 5, "6": 6, "7": 7, "8": 8, "9": 9, "10": 10,
+    "J": 11, "Q": 12, "K": 13
+}
 SUITS = ["♠", "♥", "♦", "♣"]
 
 def create_deck():
@@ -55,10 +60,11 @@ async def send_result_embed(client, user, first_card, next_card, choice, result_
     title = "📈 ハイ＆ロー確定" if is_cashout else ("📈 結果（お試し）" if is_free else "📈 結果")
     color = 0x999999 if is_free else (0x2ECC71 if change >= 0 else 0xE74C3C)
     embed = discord.Embed(title=title, description=f"{user.mention} がプレイ", color=color, timestamp=datetime.now(JST))
-    embed.add_field(name="1枚目", value=f"{first_card[0]}{first_card[1]}（{card_value(first_card[1])}）", inline=True)
+    # ✅ 数字だけ表示
+    embed.add_field(name="1枚目", value=f"{card_value(first_card[1])}", inline=True)
     if next_card:
         embed.add_field(name="選択", value="📈ハイ" if choice=="high" else "📉ロー", inline=True)
-        embed.add_field(name="2枚目", value=f"{next_card[0]}{next_card[1]}（{card_value(next_card[1])}）", inline=True)
+        embed.add_field(name="2枚目", value=f"{card_value(next_card[1])}", inline=True)
     embed.add_field(name="結果", value=result_text, inline=False)
     if streak > 0:
         embed.add_field(name="連続", value=f"{streak}回\n×{get_multiplier(streak):.1f}", inline=True)
@@ -68,7 +74,6 @@ async def send_result_embed(client, user, first_card, next_card, choice, result_
         embed.add_field(name="合計", value=f"{total}P", inline=True)
     await channel.send(embed=embed)
     
-    # ✅ お試し以外の場合だけカウントUP
     if not is_free:
         count = increment("highlow")
         print(f"📈 ハイロー: {count}回 に更新")
@@ -100,7 +105,8 @@ class HighLowGameView(discord.ui.View):
         mode = "🍀 お試し" if self.is_free else f"賭け：{self.bet}P"
         if self.streak > 0: mode += f"\n🔥{self.streak}連続 ×{get_multiplier(self.streak):.1f}"
         embed = discord.Embed(title="📈 ハイ＆ロー", description=mode, color=0x3498DB)
-        embed.add_field(name="現在のカード", value=f"**{self.first_card[0]}{self.first_card[1]}**（{card_value(self.first_card[1])}）", inline=False)
+        # ✅ 数字だけ表示
+        embed.add_field(name="現在のカード", value=f"**{card_value(self.first_card[1])}**", inline=False)
         await itx.response.edit_message(embed=embed, view=self)
 
     async def process_result(self, itx, choice, next_card):
@@ -123,8 +129,9 @@ class HighLowGameView(discord.ui.View):
             total = 0 if self.is_free else add_points(self.user_id, change)
             self.disable_all_items()
             embed = discord.Embed(title="📈 ハイ＆ロー", description="🍀 お試し" if self.is_free else f"賭け：{self.bet}P", color=0xE74C3C)
-            embed.add_field(name="1枚目", value=f"{self.first_card[0]}{self.first_card[1]}（{v1}）", inline=True)
-            embed.add_field(name="2枚目", value=f"{next_card[0]}{next_card[1]}（{v2}）", inline=True)
+            # ✅ 数字だけ表示
+            embed.add_field(name="1枚目", value=f"{v1}", inline=True)
+            embed.add_field(name="2枚目", value=f"{v2}", inline=True)
             embed.add_field(name="結果", value="💔 ハズレ…没収", inline=False)
             if not self.is_free:
                 embed.add_field(name="変動", value=f"{change:+d}P", inline=True)
@@ -181,7 +188,7 @@ class HighLowPanelView(discord.ui.View):
         mode = "🍀 お試し" if g.is_free else f"賭け：{g.bet}P"
         if g.streak > 0: mode += f" | {g.streak}連続 ×{get_multiplier(g.streak):.1f}"
         embed = discord.Embed(title="📈 ハイ＆ロー【途中再開】", description=mode, color=0x3498DB)
-        embed.add_field(name="現在のカード", value=f"**{g.first_card[0]}{g.first_card[1]}**（{card_value(g.first_card[1])}）", inline=False)
+        embed.add_field(name="現在のカード", value=f"**{card_value(g.first_card[1])}**", inline=False)
         await itx.response.send_message(embed=embed, view=g, ephemeral=True)
 
     @discord.ui.button(label="🍀 お試し", style=discord.ButtonStyle.secondary, custom_id="hl:free", row=1)
@@ -213,9 +220,9 @@ async def start_game(itx, bet, is_free=False):
         await itx.response.send_message(f"❌ ポイント不足（所持:{pts}P / 必要:{bet}P）", ephemeral=True)
         return
     view = HighLowGameView(itx.user.id, bet, is_free)
-    mode = "🍀 お試し\nいくらでも練習" if is_free else f"賭け：{bet}P\n📈大きい / 📉小さい\n💰確定→配当GET"
+    mode = "🍀 お試し\nA=1 ～ K=13" if is_free else f"賭け：{bet}P\n📈大きい / 📉小さい\n💰確定→配当GET\nA=1 ～ K=13"
     embed = discord.Embed(title="📈 ハイ＆ロー", description=mode, color=0x3498DB)
-    embed.add_field(name="最初のカード", value=f"**{view.first_card[0]}{view.first_card[1]}**（{card_value(view.first_card[1])}）", inline=False)
+    embed.add_field(name="最初の数字", value=f"**{card_value(view.first_card[1])}**", inline=False)
     await itx.response.send_message(embed=embed, view=view, ephemeral=True)
 
 async def setup(tree: app_commands.CommandTree):
@@ -226,6 +233,7 @@ async def setup(tree: app_commands.CommandTree):
             return
         embed = discord.Embed(title="📈 ハイ＆ロー", description="""🔍 途中のゲーム → 消しても再表示
 🍀 お試し → 無料（カウントされません）
-💳 1P/10P/50P/100P → ポイントで対戦（カウントされます）""", color=0x3498DB)
+💳 1P/10P/50P/100P → ポイントで対戦（カウントされます）
+A=1 ～ K=13 の数字で勝負！""", color=0x3498DB)
         await itx.response.send_message(embed=embed, view=HighLowPanelView())
         await itx.followup.send("✅ 設置完了", ephemeral=True)
