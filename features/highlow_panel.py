@@ -5,7 +5,6 @@ import json
 import os
 from datetime import datetime, timedelta, timezone
 from core.common import is_owner
-
 # ===== 統計用共通モジュール読み込み =====
 from core.game_stats import increment
 
@@ -82,7 +81,7 @@ async def send_result_embed(client, user, first_card, next_card, choice, result_
         embed.add_field(name="備考", value="お試しモード\nポイントの増減なし", inline=False)
     embed.set_thumbnail(url=user.display_avatar.url)
     await channel.send(embed=embed)
-
+    
     # ===== チャンネル名更新 =====
     count = increment("highlow")
     await channel.edit(name=f"📈・ハイロー・{count}回", reason="プレイ回数更新")
@@ -99,12 +98,17 @@ class HighLowGameView(discord.ui.View):
         self.deck = create_deck()
         self.first_card = self.deck.pop()
         self.streak = 0
-        games[user_id] = self
+        games[user_id] = self  # 開始時に登録
 
     def disable_all_items(self):
         for child in self.children:
             if isinstance(child, discord.ui.Button):
                 child.disabled = True
+
+    async def end_game(self):
+        """✅ ゲーム終了処理を一括化"""
+        if self.user_id in games:
+            del games[self.user_id]
 
     async def show_choice_ui(self, itx):
         """ハイ・ロー・終了 選択画面表示"""
@@ -159,12 +163,15 @@ class HighLowGameView(discord.ui.View):
             self.first_card = next_card
             await self.show_choice_ui(itx)
         else:
-            # 負け → 終了
+            # ✅ 負け → 先にフラグ削除
+            await self.end_game()
+            
             self.streak = 0
             change = -self.bet if not self.is_free else 0
             new_total = 0 if self.is_free else add_points(self.user_id, change)
             result_text = "💔 ハズレ… 没収"
             self.disable_all_items()
+            
             embed = discord.Embed(
                 title="📈 ハイ＆ロー",
                 description=("🍀 お試しモード" if self.is_free else f"賭け：{self.bet}P"),
@@ -176,6 +183,7 @@ class HighLowGameView(discord.ui.View):
             if not self.is_free:
                 embed.add_field(name="変動", value=f"{change:+d}P", inline=True)
                 embed.add_field(name="所持P", value=f"{new_total}P", inline=True)
+            
             await itx.response.edit_message(embed=embed, view=self)
             await send_result_embed(
                 itx.client, itx.user,
@@ -183,7 +191,6 @@ class HighLowGameView(discord.ui.View):
                 result_text, change, self.bet, new_total,
                 0, is_free=self.is_free
             )
-            del games[self.user_id]
 
     @discord.ui.button(label="📈 ハイ", style=discord.ButtonStyle.primary, row=0)
     async def high_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
@@ -209,6 +216,9 @@ class HighLowGameView(discord.ui.View):
         if self.streak == 0:
             await itx.response.send_message("❌ まだ何も当たっていません", ephemeral=True)
             return
+        
+        # ✅ 確定 → 先にフラグ削除
+        await self.end_game()
         
         mult = get_multiplier(self.streak)
         win_amount = int(self.bet * mult)
@@ -237,7 +247,6 @@ class HighLowGameView(discord.ui.View):
             result_text, change, self.bet, new_total,
             self.streak, is_free=self.is_free, is_cashout=True
         )
-        del games[self.user_id]
 
 
 class HighLowPanelView(discord.ui.View):
@@ -273,6 +282,7 @@ async def start_game(itx, bet, is_free=False):
     if not is_free and pts < bet:
         await itx.response.send_message(f"❌ ポイントが足りません！（所持：{pts}P / 必要：{bet}P）", ephemeral=True)
         return
+    
     view = HighLowGameView(itx.user.id, bet, is_free=is_free)
     
     mode_text = "🍀 お試しモード\nいくらでも練習可能" if is_free else (
