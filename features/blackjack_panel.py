@@ -5,7 +5,6 @@ import json
 import os
 from datetime import datetime, timedelta, timezone
 from core.common import is_owner
-from core.game_stats import increment
 
 JST = timezone(timedelta(hours=9))
 DATA_FILE = "kn_points_data.json"
@@ -81,14 +80,6 @@ async def send_result_embed(client, user, dealer_cards, player_cards, result_tex
         embed.add_field(name="備考", value="お試しモード", inline=False)
     embed.set_thumbnail(url=user.display_avatar.url)
     await channel.send(embed=embed)
-    
-    # ✅ お試し以外の場合だけカウントUP
-    if not is_free:
-        count = increment("blackjack")
-        print(f"🃏 ブラックジャック: {count}回 に更新")
-        await channel.edit(name=f"🃏・ブラックジャック・{count}回", reason="プレイ回数更新")
-    else:
-        print("🍀 お試しプレイ → カウントしません")
 
 games = {}
 
@@ -225,23 +216,28 @@ class BlackjackPanelView(discord.ui.View):
         embed.add_field(name="あなた", value=f"{g.hand_str(g.player_hand)}\n合計: {hand_total(g.player_hand)}", inline=False)
         await itx.response.send_message(embed=embed, view=g, ephemeral=True)
 
-    @discord.ui.button(label="🍀 お試しプレイ", style=discord.ButtonStyle.secondary, custom_id="bj:free", row=1)
+    @discord.ui.button(label="💳 ポイント確認", style=discord.ButtonStyle.success, custom_id="bj:check_points", row=1)
+    async def check_points(self, itx, btn):
+        pts = get_points(itx.user.id)
+        await itx.response.send_message(f"💳 あなたのポイント：**{pts}P**", ephemeral=True)
+
+    @discord.ui.button(label="🍀 お試しプレイ", style=discord.ButtonStyle.secondary, custom_id="bj:free", row=2)
     async def free_play(self, itx, btn):
         await start_game(itx, 0, True)
 
-    @discord.ui.button(label="💳 1P ブラックジャック", style=discord.ButtonStyle.primary, custom_id="bj:1", row=2)
+    @discord.ui.button(label="💳 1P ブラックジャック", style=discord.ButtonStyle.primary, custom_id="bj:1", row=3)
     async def bj1(self, itx, btn):
         await start_game(itx, 1)
 
-    @discord.ui.button(label="💳 10P ブラックジャック", style=discord.ButtonStyle.primary, custom_id="bj:10", row=2)
+    @discord.ui.button(label="💳 10P ブラックジャック", style=discord.ButtonStyle.primary, custom_id="bj:10", row=3)
     async def bj10(self, itx, btn):
         await start_game(itx, 10)
 
-    @discord.ui.button(label="💳 50P ブラックジャック", style=discord.ButtonStyle.primary, custom_id="bj:50", row=2)
+    @discord.ui.button(label="💳 50P ブラックジャック", style=discord.ButtonStyle.primary, custom_id="bj:50", row=3)
     async def bj50(self, itx, btn):
         await start_game(itx, 50)
 
-    @discord.ui.button(label="💳 100P ブラックジャック", style=discord.ButtonStyle.danger, custom_id="bj:100", row=3)
+    @discord.ui.button(label="💳 100P ブラックジャック", style=discord.ButtonStyle.danger, custom_id="bj:100", row=4)
     async def bj100(self, itx, btn):
         await start_game(itx, 100)
 
@@ -276,7 +272,8 @@ async def setup(tree: app_commands.CommandTree):
             await itx.response.send_message("❌ 管理者専用", ephemeral=True)
             return
         embed = discord.Embed(title="🃏 ブラックジャック", description="""🔍 途中のゲーム → 消しても再表示
-🍀 お試し → 無料プレイ（カウントされません）
-💳 1P/10P/50P/100P → ポイントで対戦（カウントされます）""", color=0x1ABC9C)
+💳 ポイント確認 → 現在のポイントを表示
+🍀 お試し → 無料プレイ
+💳 1P/10P/50P/100P → ポイントで対戦""", color=0x1ABC9C)
         await itx.response.send_message(embed=embed, view=BlackjackPanelView())
         await itx.followup.send("✅ 設置完了", ephemeral=True)
