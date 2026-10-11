@@ -1,16 +1,3 @@
-import sys
-# 二重でチェックが走るのを防止
-if 'nacl' not in sys.modules:
-    class _FakeNacl:
-        __version__ = "1.6.2"
-        class bindings:
-            @staticmethod
-            def crypto_secretbox_KEYBYTES(): return 32
-    sys.modules['nacl'] = _FakeNacl()
-    sys.modules['nacl.bindings'] = _FakeNacl.bindings
-
-import discord
-# 以降はそのまま続ける
 import discord
 from discord import app_commands
 import asyncio
@@ -20,6 +7,7 @@ from core.common import is_owner
 import gtts
 import tempfile
 import os
+# 以降はそのまま
 
 JST = timezone(timedelta(hours=9))
 
