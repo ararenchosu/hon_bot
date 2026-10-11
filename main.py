@@ -4,6 +4,7 @@ import os
 from core.database import init_db
 
 from features.lottery_panel import setup as lottery_setup
+from features.login_bonus import setup as login_bonus_setup  # ✅ 追加
 import features.othello as othello
 import features.othello_panel as othello_panel
 import features.auth_panel as auth_panel
@@ -48,8 +49,10 @@ async def on_ready():
     # ✅ View登録
     try:
         from features.lottery_panel import LotteryPanelView, PointCheckPanelView
+        from features.login_bonus import LoginBonusPanelView  # ✅ 追加
         bot.add_view(LotteryPanelView())
         bot.add_view(PointCheckPanelView())
+        bot.add_view(LoginBonusPanelView())  # ✅ 追加
         bot.add_view(othello_panel.OthelloPanelView())
         bot.add_view(call_panel.CallPanelView(bot))
         bot.add_view(auth_panel.AuthPanelView())
@@ -63,6 +66,8 @@ async def on_ready():
     print("\n🔄 コマンド登録中...")
     await lottery_setup(tree)
     print("  ✅ lottery_panel → /くじ引きパネル設置 / /ポイント確認パネル設置")
+    await login_bonus_setup(tree)  # ✅ 追加
+    print("  ✅ login_bonus → /ログインボーナスパネル設置")
     await othello.setup(tree)
     await othello_panel.setup(tree)
     await auth_panel.setup(tree)
@@ -77,7 +82,7 @@ async def on_ready():
     for cmd in tree.get_commands():
         print(f"   /{cmd.name}")
 
-    # ✅ グローバル同期（反映に少し時間がかかるが確実）
+    # ✅ グローバル同期
     print("\n🔄 グローバル同期中...")
     synced = await tree.sync()
     print(f"✅ 同期完了！合計 {len(synced)} 件")
