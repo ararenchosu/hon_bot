@@ -43,30 +43,39 @@ def make_tts_audio(text: str) -> io.BytesIO:
 
 
 async def speak_in_channel(voice_channel, text: str):
-    """指定チャンネルで読み上げ（エラー修正版）"""
+    """指定チャンネルで読み上げ - 最終確実版"""
     if not voice_channel:
+        print("⚠️ チャンネルがNoneです")
         return
     try:
         client = voice_channel.guild._state._get_client()
-        # ✅ 正しい方法：client.voice_clients を使う
+        print(f"🔊 読み上げ開始: {text} / チャンネル: {voice_channel.name}")
+
+        # 既に接続されているか確認
         vc = None
         for conn in client.voice_clients:
             if conn.guild.id == voice_channel.guild.id:
                 vc = conn
                 break
+
+        # 接続されていなければ入る
         if not vc or not vc.is_connected():
+            print(f"🔊 チャンネルに接続します...")
             vc = await voice_channel.connect()
+            print(f"✅ 接続完了: {voice_channel.name}")
         elif vc.channel.id != voice_channel.id:
+            print(f"🔊 チャンネルを移動: {vc.channel.name} → {voice_channel.name}")
             await vc.move_to(voice_channel)
 
         # 再生中なら待つ
         while vc.is_playing():
             await asyncio.sleep(0.3)
 
-        # 音声再生
+        # 音声生成・再生
         audio_fp = await asyncio.to_thread(make_tts_audio, text)
         source = discord.FFmpegPCMAudio(audio_fp, pipe=True)
         vc.play(source)
+        print(f"🔊 再生中: {text}")
 
         while vc.is_playing():
             await asyncio.sleep(0.3)
@@ -74,8 +83,10 @@ async def speak_in_channel(voice_channel, text: str):
         # 他にメンバーがいなければ切断
         if len(voice_channel.members) == 1:
             await vc.disconnect()
+            print(f"🔌 誰もいないので切断しました")
+
     except Exception as e:
-        print(f"⚠️ 音声読み上げエラー: {e}")
+        print(f"⚠️ 音声読み上げエラー: {type(e).__name__}: {e}")
 
 
 async def send_create_log(client: discord.Client, channel_name: str, creator: discord.User):
@@ -183,6 +194,7 @@ class RoomNameModal(discord.ui.Modal, title="通話ルーム名を入力"):
         required=True,
         max_length=30
     )
+
     async def on_submit(self, itx: discord.Interaction):
         category = itx.guild.get_channel(CATEGORY_ID)
         if not category or not isinstance(category, discord.CategoryChannel):
@@ -227,21 +239,23 @@ async def watch_channel(channel: discord.VoiceChannel):
     channel_id = channel.id
     channel_name = channel.name
     last_members = set()
+    print(f"👀 監視開始: {channel_name}")
 
     try:
         # ===== フェーズ1：作成後2分間、誰も入らなければ削除 =====
         for _ in range(TIMEOUT_NO_JOIN):
             if channel_id not in active_channels:
                 return
-            # チャンネルがまだ存在するか確認
             ch = client.get_channel(channel_id)
             if not ch:
+                print(f"🗑️ チャンネルが既に削除されています: {channel_name}")
                 return
             current_members = set(ch.members)
 
             for member in current_members - last_members:
                 if member.bot:
                     continue
+                print(f"📥 入室検知: {member.display_name}")
                 now_ts = datetime.now(JST).timestamp()
                 active_channels[channel_id]["member_records"][member.id] = {
                     "mention": member.mention,
@@ -251,6 +265,7 @@ async def watch_channel(channel: discord.VoiceChannel):
                 }
                 await send_join_log(client, channel_name, member, now_ts)
                 asyncio.create_task(speak_in_channel(ch, f"{member.display_name}さんが入室しました"))
+
             last_members = current_members
             if len(current_members) > 0:
                 break
@@ -259,9 +274,9 @@ async def watch_channel(channel: discord.VoiceChannel):
             # 2分間誰も入室なし
             ch = client.get_channel(channel_id)
             if ch:
+                print(f"⏰ 2分経過・誰も入室なし → 削除: {channel_name}")
                 records = list(active_channels[channel_id]["member_records"].values())
                 await send_delete_summary_log(client, channel_name, "2分以内に入室がないため", records)
-                # 切断
                 for vc in client.voice_clients:
                     if vc.channel and vc.channel.id == channel_id:
                         await vc.disconnect()
@@ -281,6 +296,7 @@ async def watch_channel(channel: discord.VoiceChannel):
             for member in current_members - last_members:
                 if member.bot:
                     continue
+                print(f"📥 入室: {member.display_name}")
                 now_ts = datetime.now(JST).timestamp()
                 active_channels[channel_id]["member_records"][member.id] = {
                     "mention": member.mention,
@@ -295,6 +311,7 @@ async def watch_channel(channel: discord.VoiceChannel):
             for member in last_members - current_members:
                 if member.bot:
                     continue
+                print(f"📤 退出: {member.display_name}")
                 rec = active_channels[channel_id]["member_records"].get(member.id)
                 if rec and rec["leave_ts"] is None:
                     leave_ts = datetime.now(JST).timestamp()
@@ -308,12 +325,12 @@ async def watch_channel(channel: discord.VoiceChannel):
 
             # 0人になったら5秒待って削除
             if len(current_members) == 0:
+                print(f"👥 0人になりました → 5秒後に削除します")
                 await asyncio.sleep(TIMEOUT_EMPTY)
                 ch = client.get_channel(channel_id)
                 if ch and len(ch.members) == 0:
                     records = list(active_channels[channel_id]["member_records"].values())
                     await send_delete_summary_log(client, channel_name, "誰もいなくなったため自動削除", records)
-                    # 切断
                     for vc in client.voice_clients:
                         if vc.channel and vc.channel.id == channel_id:
                             await vc.disconnect()
@@ -333,6 +350,7 @@ async def watch_channel(channel: discord.VoiceChannel):
 class VoiceCreatePanelView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
+
     @discord.ui.button(
         label="🔊 通話ルームを作成",
         style=discord.ButtonStyle.primary,
@@ -340,6 +358,7 @@ class VoiceCreatePanelView(discord.ui.View):
     )
     async def create_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
         await itx.response.send_modal(RoomNameModal())
+
     @discord.ui.button(
         label="✏️ パネル編集",
         style=discord.ButtonStyle.secondary,
@@ -349,6 +368,7 @@ class VoiceCreatePanelView(discord.ui.View):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
             return
+
         class PanelEditModal(discord.ui.Modal, title="パネル編集"):
             title_in = discord.ui.TextInput(
                 label="パネルタイトル",
@@ -361,6 +381,7 @@ class VoiceCreatePanelView(discord.ui.View):
                 style=discord.TextStyle.long,
                 required=True
             )
+
             async def on_submit(self, m_itx: discord.Interaction):
                 colors = [
                     discord.Color.blue(), discord.Color.green(),
@@ -375,6 +396,7 @@ class VoiceCreatePanelView(discord.ui.View):
                 )
                 await m_itx.response.edit_message(embed=embed)
                 await m_itx.followup.send("✅ パネルを更新しました", ephemeral=True)
+
         await itx.response.send_modal(PanelEditModal())
 
 
