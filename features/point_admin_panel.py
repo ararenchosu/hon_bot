@@ -97,10 +97,18 @@ class SelectUserView(discord.ui.View):
     def __init__(self, action):
         super().__init__(timeout=120)
         self.action = action
+        # 選択メニューを動的に追加
+        self.add_item(
+            discord.ui.UserSelect(
+                custom_id="select_user",
+                placeholder="ユーザーを選択してください"
+            )
+        )
 
-    @discord.ui.user_select(label="ユーザーを選択")
-    async def select_user(self, select: discord.ui.UserSelect, itx: discord.Interaction):
-        user = select.values[0]
+    async def interaction_check(self, itx: discord.Interaction) -> bool:
+        selected_user = itx.data["values"][0]
+        user = await itx.client.fetch_user(int(selected_user))
+
         if self.action == "add":
             await itx.response.send_modal(AddPointsModal(user))
         elif self.action == "set":
@@ -123,6 +131,7 @@ class SelectUserView(discord.ui.View):
             )
             embed.set_thumbnail(url=user.display_avatar.url)
             await itx.response.send_message(embed=embed, ephemeral=True)
+        return True
 
 # === メインパネル ===
 class PointAdminView(discord.ui.View):
