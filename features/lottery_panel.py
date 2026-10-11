@@ -115,13 +115,13 @@ class LotteryPanelView(discord.ui.View):
         class LotteryEditModal(discord.ui.Modal, title="くじパネル編集"):
             title_in = discord.ui.TextInput(
                 label="タイトル",
-                default="🎰 1日1回！くじ引き",
+                default="🗳️1日1回！くじ引き",
                 required=True
             )
             desc_in = discord.ui.TextInput(
                 label="説明文",
                 style=discord.TextStyle.long,
-                default="下のボタンを押して1日1回くじが引けます✨\n"
+                default="⬇️のボタンを押して1日1回くじが引けます✨\n"
                         "🎖️1等:100pt / 🥈2等:75pt / 🥉3等:50pt / 🏅4等:25pt / 🎀5等:10pt",
                 required=True
             )
@@ -158,13 +158,13 @@ class PointCheckPanelView(discord.ui.View):
         class PointEditModal(discord.ui.Modal, title="ポイントパネル編集"):
             title_in = discord.ui.TextInput(
                 label="タイトル",
-                default="💳 ポイント確認",
+                default="💰ポイント確認",
                 required=True
             )
             desc_in = discord.ui.TextInput(
                 label="説明文",
                 style=discord.TextStyle.long,
-                default="下のボタンを押すと現在のポイントが確認できます✨",
+                default="⬇️のボタンを押すと現在のポイントが確認できます✨",
                 required=True
             )
             async def on_submit(self, m_itx: discord.Interaction):
@@ -186,8 +186,8 @@ async def setup(tree):
             await itx.response.send_message("❌ オーナー専用コマンドです", ephemeral=True)
             return
         embed = discord.Embed(
-            title="🎰 1日1回！くじ引き",
-            description="下のボタンを押して1日1回くじが引けます✨\n"
+            title="🗳️1日1回！くじ引き",
+            description="⬇️のボタンを押して1日1回くじが引けます✨\n"
                         "🎖️1等:100pt / 🥈2等:75pt / 🥉3等:50pt / 🏅4等:25pt / 🎀5等:10pt",
             color=0xFFD700
         )
@@ -199,8 +199,8 @@ async def setup(tree):
             await itx.response.send_message("❌ オーナー専用コマンドです", ephemeral=True)
             return
         embed = discord.Embed(
-            title="💳 ポイント確認",
-            description="下のボタンを押すと現在のポイントが確認できます✨",
+            title="💰ポイント確認",
+            description="⬇️のボタンを押すと現在のポイントが確認できます✨",
             color=0x2ECC71
         )
         await itx.response.send_message(embed=embed, view=PointCheckPanelView())
