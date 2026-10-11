@@ -7,7 +7,8 @@ from features.lottery_panel import setup as lottery_setup
 from features.login_bonus import setup as login_bonus_setup
 from features.slots_panel import setup as slots_setup
 from features.blackjack_panel import setup as bj_setup
-from features.highlow_panel import setup as hl_setup  # ✅ 追加
+from features.highlow_panel import setup as hl_setup
+from features.point_admin_panel import setup as point_admin_setup  # ✅ 追加
 import features.othello as othello
 import features.othello_panel as othello_panel
 import features.auth_panel as auth_panel
@@ -29,6 +30,7 @@ init_db()
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
+
 bot = discord.Client(intents=intents)
 tree = app_commands.CommandTree(bot)
 
@@ -54,14 +56,16 @@ async def on_ready():
         from features.login_bonus import LoginBonusPanelView
         from features.slots_panel import SlotPanelView
         from features.blackjack_panel import BlackjackPanelView
-        from features.highlow_panel import HighLowPanelView  # ✅ 追加
+        from features.highlow_panel import HighLowPanelView
+        from features.point_admin_panel import PointAdminView  # ✅ 追加
         
         bot.add_view(LotteryPanelView())
         bot.add_view(PointCheckPanelView())
         bot.add_view(LoginBonusPanelView())
         bot.add_view(SlotPanelView())
         bot.add_view(BlackjackPanelView())
-        bot.add_view(HighLowPanelView())  # ✅ 追加
+        bot.add_view(HighLowPanelView())
+        bot.add_view(PointAdminView())  # ✅ 追加
         bot.add_view(othello_panel.OthelloPanelView())
         bot.add_view(call_panel.CallPanelView(bot))
         bot.add_view(auth_panel.AuthPanelView())
@@ -82,8 +86,10 @@ async def on_ready():
     print("  ✅ slots_panel → /スロットパネル設置")
     await bj_setup(tree)
     print("  ✅ blackjack_panel → /ブラックジャックパネル設置")
-    await hl_setup(tree)  # ✅ 追加
+    await hl_setup(tree)
     print("  ✅ highlow_panel → /ハイローパネル設置")
+    await point_admin_setup(tree)  # ✅ 追加
+    print("  ✅ point_admin_panel → /ポイント付与パネル設置")
     await othello.setup(tree)
     await othello_panel.setup(tree)
     await auth_panel.setup(tree)
