@@ -2,7 +2,6 @@ import discord
 from discord import app_commands
 import asyncio
 from core.database import init_db
-from core.common import OWNER_GUILD_ID  # もしくは直接IDを記入
 from features.lottery_panel import setup as lottery_setup
 from features.login_bonus import setup as login_bonus_setup
 import features.othello as othello
@@ -87,11 +86,10 @@ async def on_ready():
         print(f"   /{cmd.name}")
 
     print("\n🔄 ギルド同期中（即時反映）...")
-    # ===== 自分のサーバーIDに置き換え =====
-    GUILD_ID = 1542788841465978880  # ← ここを自分のサーバーIDに！
+    # ✅ 指定されたサーバーID
+    GUILD_ID = 1542788841465978880
     guild = discord.Object(id=GUILD_ID)
     synced = await tree.sync(guild=guild)
-    # ====================================
     print(f"✅ 同期完了！合計 {len(synced)} 件")
     for cmd in synced:
         print(f"   /{cmd.name}")
