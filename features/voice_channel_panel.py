@@ -15,7 +15,7 @@ TIMEOUT_NO_JOIN = 120  # 作成後誰も入らないと削除：2分
 TIMEOUT_EMPTY = 5      # 0人になってから削除：5秒
 
 # チャンネル管理データ
-active_channels = {}  # {channel_id: {"task": タスク, "members": {user_id: {name, join_at, leave_at, stay_sec}}}}
+active_channels = {}
 
 
 def format_time(seconds: int) -> str:
@@ -35,7 +35,6 @@ def jst_str(timestamp: float) -> str:
 
 
 async def send_create_log(client: discord.Client, channel_name: str, creator: discord.User):
-    """チャンネル作成ログ送信"""
     log_ch = client.get_channel(LOG_CREATE_DELETE_CHANNEL)
     if not log_ch:
         print(f"⚠️ 作成ログチャンネルが見つかりません: {LOG_CREATE_DELETE_CHANNEL}")
@@ -52,7 +51,6 @@ async def send_create_log(client: discord.Client, channel_name: str, creator: di
 
 
 async def send_delete_summary_log(client: discord.Client, channel_name: str, reason: str, member_records: list):
-    """チャンネル削除時まとめログ送信（チャンネル別・全員表示）"""
     log_ch = client.get_channel(LOG_CREATE_DELETE_CHANNEL)
     if not log_ch:
         print(f"⚠️ 削除ログチャンネルが見つかりません: {LOG_CREATE_DELETE_CHANNEL}")
@@ -67,13 +65,14 @@ async def send_delete_summary_log(client: discord.Client, channel_name: str, rea
     embed.add_field(name="📝 理由", value=reason, inline=False)
 
     if member_records:
-        # 参加者一覧を整形
         member_lines = []
         first_join = None
         last_leave = None
         max_stay = 0
         for rec in member_records:
-            line = f"{rec['mention']} ｜ 入室{rec['join_str']} ／ 退出{rec['leave_str']} ／ 在籍{format_time(rec['stay_sec'])}"
+            join_str = jst_str(rec["join_ts"])
+            leave_str = jst_str(rec["leave_ts"])
+            line = f"{rec['mention']} ｜ 入室{join_str} ／ 退出{leave_str} ／ 在籍{format_time(rec['stay_sec'])}"
             member_lines.append(line)
             if first_join is None or rec["join_ts"] < first_join:
                 first_join = rec["join_ts"]
@@ -103,7 +102,6 @@ async def send_delete_summary_log(client: discord.Client, channel_name: str, rea
 
 
 async def send_join_log(client: discord.Client, channel_name: str, user: discord.User, join_time: float):
-    """個人別 入室ログ送信"""
     log_ch = client.get_channel(LOG_JOIN_LEAVE_CHANNEL)
     if not log_ch:
         print(f"⚠️ 入室ログチャンネルが見つかりません: {LOG_JOIN_LEAVE_CHANNEL}")
@@ -121,7 +119,6 @@ async def send_join_log(client: discord.Client, channel_name: str, user: discord
 
 
 async def send_leave_log(client: discord.Client, channel_name: str, user: discord.User, leave_time: float, stay_sec: int):
-    """個人別 退出ログ送信"""
     log_ch = client.get_channel(LOG_JOIN_LEAVE_CHANNEL)
     if not log_ch:
         print(f"⚠️ 退出ログチャンネルが見つかりません: {LOG_JOIN_LEAVE_CHANNEL}")
@@ -178,7 +175,6 @@ class RoomNameModal(discord.ui.Modal, title="通話ルーム名を入力"):
             reason=f"一時通話ルーム作成: {itx.user}"
         )
 
-        # ✅ 作成ログ送信
         await send_create_log(itx.client, voice_channel.name, itx.user)
 
         await itx.response.send_message(
@@ -186,30 +182,28 @@ class RoomNameModal(discord.ui.Modal, title="通話ルーム名を入力"):
             ephemeral=True
         )
 
-        # チャンネル管理データ初期化
         active_channels[voice_channel.id] = {
             "task": None,
             "channel_name": voice_channel.name,
-            "member_records": {}  # {user_id: {mention, join_ts, leave_ts, stay_sec}}
+            "member_records": {}
         }
 
-        # 監視タスク開始
         task = asyncio.create_task(watch_channel(voice_channel))
         active_channels[voice_channel.id]["task"] = task
 
 
 async def watch_channel(channel: discord.VoiceChannel):
-    """チャンネル状態監視・入退室検知・ログ送信・自動削除"""
     client = channel.guild._state._get_client()
     channel_id = channel.id
     channel_name = channel.name
-    last_members = set()  # 前回確認時のメンバー一覧
+    last_members = set()
 
     try:
         # ===== フェーズ1：作成後2分間、誰も入らなければ削除 =====
         for _ in range(TIMEOUT_NO_JOIN):
+            if channel_id not in active_channels:
+                return
             current_members = set(channel.members)
-            # 入室検知
             for member in current_members - last_members:
                 if member.bot:
                     continue
@@ -226,7 +220,6 @@ async def watch_channel(channel: discord.VoiceChannel):
                 break
             await asyncio.sleep(1)
         else:
-            # 2分間誰も入室なし → 削除
             if channel.guild.get_channel(channel_id):
                 records = list(active_channels[channel_id]["member_records"].values())
                 await send_delete_summary_log(client, channel_name, "2分以内に入室がないため", records)
@@ -235,9 +228,11 @@ async def watch_channel(channel: discord.VoiceChannel):
 
         # ===== フェーズ2：常時監視 =====
         while True:
+            if channel_id not in active_channels:
+                return
             current_members = set(channel.members)
 
-            # 入室者チェック
+            # 入室
             for member in current_members - last_members:
                 if member.bot:
                     continue
@@ -250,7 +245,7 @@ async def watch_channel(channel: discord.VoiceChannel):
                 }
                 await send_join_log(client, channel_name, member, now_ts)
 
-            # 退出者チェック
+            # 退出
             for member in last_members - current_members:
                 if member.bot:
                     continue
@@ -264,12 +259,11 @@ async def watch_channel(channel: discord.VoiceChannel):
 
             last_members = current_members
 
-            # 0人になったら5秒待って再確認
+            # 0人になったら5秒待って削除
             if len(current_members) == 0:
                 await asyncio.sleep(TIMEOUT_EMPTY)
                 ch = channel.guild.get_channel(channel_id)
                 if ch and len(ch.members) == 0:
-                    # チャンネル別まとめログ送信
                     records = list(active_channels[channel_id]["member_records"].values())
                     await send_delete_summary_log(client, channel_name, "誰もいなくなったため自動削除", records)
                     await ch.delete(reason="誰もいないため自動削除")
