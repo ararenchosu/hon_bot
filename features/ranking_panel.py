@@ -1,16 +1,32 @@
 import discord
 from discord import app_commands
 import asyncio
+import json
+import os
 from datetime import datetime, timedelta, timezone
 from core.common import is_owner
-from core.database import get_connection
 
 JST = timezone(timedelta(hours=9))
 PANEL_TABLE = "ranking_panels"
+DATA_FILE = "kn_points_data.json"  # ✅ くじと同じJSONファイルを指定
 active_panels = {}
+
+# ===== JSONからポイントデータ読み込み =====
+def load_points_data():
+    """JSONファイルからポイントデータを読み込む"""
+    if not os.path.exists(DATA_FILE):
+        return {}
+    try:
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data.get("points", {})
+    except Exception as e:
+        print(f"⚠️ ポイントデータ読み込みエラー: {e}")
+        return {}
 
 # ===== DB 初期化 =====
 def init_db():
+    from core.database import get_connection
     conn = get_connection()
     cur = conn.cursor()
     cur.execute(f"""
@@ -26,6 +42,7 @@ def init_db():
     conn.close()
 
 def get_panel(channel_id):
+    from core.database import get_connection
     conn = get_connection()
     cur = conn.cursor()
     cur.execute(f"SELECT message_id, title, description FROM {PANEL_TABLE} WHERE channel_id = ?", (str(channel_id),))
@@ -36,6 +53,7 @@ def get_panel(channel_id):
     return {"message_id": r[0], "title": r[1], "description": r[2]}
 
 def save_panel(channel_id, message_id, title, description):
+    from core.database import get_connection
     conn = get_connection()
     cur = conn.cursor()
     cur.execute(f"""
@@ -46,34 +64,25 @@ def save_panel(channel_id, message_id, title, description):
     conn.close()
 
 def get_ranking(limit=10):
-    """ポイントの多い順に取得（テーブルがない場合は空を返す）"""
-    conn = get_connection()
-    cur = conn.cursor()
-    try:
-        cur.execute("""
-            SELECT user_id, points FROM point_users
-            ORDER BY points DESC LIMIT ?
-        """, (limit,))
-        result = cur.fetchall()
-    except Exception:
-        result = []
-    conn.close()
-    return result
+    """JSONからポイント順位を取得（上位10名）"""
+    points_dict = load_points_data()
+    if not points_dict:
+        return []
+    # (user_id, points) のリストに変換してポイント降順でソート
+    sorted_list = sorted(points_dict.items(), key=lambda x: x[1], reverse=True)
+    return sorted_list[:limit]
 
 def get_user_rank_and_points(user_id):
-    """指定ユーザーの順位とポイントを取得（テーブルがない場合の処理追加）"""
-    conn = get_connection()
-    cur = conn.cursor()
-    try:
-        cur.execute("SELECT user_id, points FROM point_users ORDER BY points DESC")
-        rows = cur.fetchall()
-    except Exception:
-        rows = []
-    conn.close()
-    for idx, (uid, pts) in enumerate(rows, 1):
-        if uid == str(user_id):
+    """指定ユーザーの順位とポイントを取得"""
+    uid = str(user_id)
+    points_dict = load_points_data()
+    if not points_dict or uid not in points_dict:
+        return 0, 0
+    sorted_list = sorted(points_dict.items(), key=lambda x: x[1], reverse=True)
+    for idx, (user_id_str, pts) in enumerate(sorted_list, 1):
+        if user_id_str == uid:
             return idx, pts
-    return len(rows) if rows else 0, 0
+    return 0, 0
 
 # ===== ランキング埋め込み作成 =====
 def build_ranking_embed(title, description, guild: discord.Guild):
@@ -180,6 +189,7 @@ async def auto_update_task(client: discord.Client):
         wait = (target - datetime.now(JST)).total_seconds()
         await asyncio.sleep(wait)
         # 全パネル更新
+        from core.database import get_connection
         conn = get_connection()
         cur = conn.cursor()
         cur.execute(f"SELECT channel_id, message_id, title, description FROM {PANEL_TABLE}")
