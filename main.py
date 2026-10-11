@@ -2,6 +2,9 @@ import discord
 from discord import app_commands
 import os
 from core.database import init_db  # ← 追加
+# 例：main.py などに記載
+from lottery_panel import setup as lottery_setup
+await lottery_setup(tree)
 
 BOT_TOKEN = os.getenv("DISCORD_TOKEN")
 if not BOT_TOKEN:
