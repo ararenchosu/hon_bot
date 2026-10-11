@@ -1,6 +1,7 @@
 import discord
 from discord import app_commands
 import asyncio
+import os  # ✅ 追加
 from core.database import init_db
 from features.lottery_panel import setup as lottery_setup
 from features.login_bonus import setup as login_bonus_setup
