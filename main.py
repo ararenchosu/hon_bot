@@ -60,7 +60,9 @@ async def on_ready():
         print(f"⚠️ View登録エラー: {e}")
 
     # ✅ コマンド登録
+    print("🔄 コマンド登録中...")
     await lottery_setup(tree)
+    print("  → くじ引きパネル / ポイント確認パネル 登録完了")
     await othello.setup(tree)
     await othello_panel.setup(tree)
     await auth_panel.setup(tree)
@@ -68,12 +70,17 @@ async def on_ready():
     await revoke_panel.setup(tree)
     await call_panel.setup(tree, bot)
     await welcome_leave.setup(bot)
-    print("✅ コマンド登録完了")
+    print("✅ 全コマンド登録完了")
 
     # ✅ ギルド同期
     GUILD_ID = 1542788841465978880
-    await tree.sync(guild=discord.Object(id=GUILD_ID))
-    print(f"✅ コマンド同期完了 / ギルドID: {GUILD_ID}")
+    synced = await tree.sync(guild=discord.Object(id=GUILD_ID))
+    
+    # ✅ 同期後に実際に使えるコマンドを一覧表示
+    print(f"\n✅ 同期完了！登録されたコマンド一覧（{len(synced)}件）：")
+    for cmd in synced:
+        print(f"   /{cmd.name} — {cmd.description}")
+    print()
 
     # ✅ パネル復元
     print("🔄 パネル復元中...")
