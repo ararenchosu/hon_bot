@@ -46,23 +46,29 @@ def save_panel(channel_id, message_id, title, description):
     conn.close()
 
 def get_ranking(limit=10):
-    """ポイントの多い順に取得"""
+    """ポイントの多い順に取得（テーブルがない場合は空を返す）"""
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute("""
-        SELECT user_id, points FROM point_users
-        ORDER BY points DESC LIMIT ?
-    """, (limit,))
-    result = cur.fetchall()
+    try:
+        cur.execute("""
+            SELECT user_id, points FROM point_users
+            ORDER BY points DESC LIMIT ?
+        """, (limit,))
+        result = cur.fetchall()
+    except Exception:
+        result = []
     conn.close()
     return result
 
 def get_user_rank_and_points(user_id):
-    """指定ユーザーの順位とポイントを取得"""
+    """指定ユーザーの順位とポイントを取得（テーブルがない場合の処理追加）"""
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute("SELECT user_id, points FROM point_users ORDER BY points DESC")
-    rows = cur.fetchall()
+    try:
+        cur.execute("SELECT user_id, points FROM point_users ORDER BY points DESC")
+        rows = cur.fetchall()
+    except Exception:
+        rows = []
     conn.close()
     for idx, (uid, pts) in enumerate(rows, 1):
         if uid == str(user_id):
