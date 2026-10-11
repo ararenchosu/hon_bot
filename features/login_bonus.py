@@ -41,8 +41,8 @@ class LoginBonusPanelView(discord.ui.View):
             desc_in = discord.ui.TextInput(
                 label="説明文",
                 style=discord.TextStyle.long,
-                default="下のボタンを押すと1日1回100ポイントがもらえます✨\n"
-                        "🎰 くじ引きとは別に受け取れます！",
+                default="⬇️のボタンを押すと1日1回100ポイントがもらえます✨\n"
+                        "🗳 くじ引きとは別に受け取れます！",
                 required=True
             )
             async def on_submit(self, m_itx: discord.Interaction):
@@ -64,8 +64,8 @@ async def setup(tree):
             return
         embed = discord.Embed(
             title="🎁 毎日ログインボーナス",
-            description="下のボタンを押すと1日1回 **100ポイント** がもらえます✨\n"
-                        "🎰 くじ引きとは別に受け取れます！",
+            description="⬇️のボタンを押すと1日1回 **100ポイント** がもらえます✨\n"
+                        "🗳 くじ引きとは別に受け取れます！",
             color=0x00FF7F
         )
         await itx.response.send_message(embed=embed, view=LoginBonusPanelView())
