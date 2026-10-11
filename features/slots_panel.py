@@ -5,7 +5,6 @@ import json
 import os
 from datetime import datetime, timedelta, timezone
 from core.common import is_owner
-
 # ===== 統計用共通モジュール読み込み =====
 from core.game_stats import increment
 
@@ -62,7 +61,6 @@ async def send_result_embed(client, user, reels, result_text, change, total, bet
     if not channel:
         print(f"⚠️ 結果チャンネルが見つかりません: {SLOT_RESULT_CHANNEL_ID}")
         return
-
     embed = discord.Embed(
         title="🎰 スロット結果",
         description=f"{user.mention} がスロットを回しました！",
@@ -77,11 +75,57 @@ async def send_result_embed(client, user, reels, result_text, change, total, bet
     embed.add_field(name="合計P", value=f"{total}P", inline=True)
     embed.set_thumbnail(url=user.display_avatar.url)
     await channel.send(embed=embed)
-
-    # ===== チャンネル名更新 =====
+    # ===== チャンネル名更新（誰でも+1） =====
     count = increment("slot")
-    if channel:
-        await channel.edit(name=f"🎰・スロット・{count}回", reason="プレイ回数更新")
+    await channel.edit(name=f"🎰・スロット・{count}回", reason="プレイ回数更新")
+
+
+# 進行中ゲーム管理
+games = {}
+
+class SlotGameView(discord.ui.View):
+    """スロットゲーム用View（途中再開対応）"""
+    def __init__(self, user_id, bet):
+        super().__init__(timeout=180)
+        self.user_id = user_id
+        self.bet = bet
+        games[user_id] = self  # 開始時に登録
+
+    async def end_game(self):
+        """ゲーム終了：フラグ削除"""
+        if self.user_id in games:
+            del games[self.user_id]
+
+    @discord.ui.button(label="🎰 回す", style=discord.ButtonStyle.primary, row=0)
+    async def spin_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
+        if itx.user.id != self.user_id:
+            await itx.response.send_message("❌ 自分のゲームではありません", ephemeral=True)
+            return
+        
+        # ポイント再確認
+        pts = get_points(self.user_id)
+        if pts < self.bet:
+            await itx.response.send_message(
+                f"❌ ポイントが足りません！（所持：{pts}P / 必要：{self.bet}P）",
+                ephemeral=True
+            )
+            await self.end_game()
+            return
+
+        reels = spin_slot()
+        gain, result_text = calc_payout(reels, self.bet)
+        new_total = add_points(self.user_id, gain)
+        
+        # 終了処理
+        await self.end_game()
+        
+        await itx.response.edit_message(
+            content=f"🎰 {reels[0]} | {reels[1]} | {reels[2]}\n"
+                    f"{result_text}\n"
+                    f"💳 合計：{new_total}P",
+            view=None
+        )
+        await send_result_embed(itx.client, itx.user, reels, result_text, gain, new_total, self.bet)
 
 
 class SlotPanelView(discord.ui.View):
@@ -89,10 +133,32 @@ class SlotPanelView(discord.ui.View):
         super().__init__(timeout=None)
 
     @discord.ui.button(
+        label="🔍 途中のゲーム",
+        style=discord.ButtonStyle.secondary,
+        custom_id="slot:resume",
+        row=0
+    )
+    async def resume_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
+        """途中から再開"""
+        g = games.get(itx.user.id)
+        if not g:
+            await itx.response.send_message(
+                "❌ 進行中のゲームはありません",
+                ephemeral=True
+            )
+            return
+        embed = discord.Embed(
+            title="🎰 スロット【途中再開】",
+            description=f"賭け：{g.bet}P\n下の「🎰 回す」を押してスタート！",
+            color=0xFFD700
+        )
+        await itx.response.send_message(embed=embed, view=g, ephemeral=True)
+
+    @discord.ui.button(
         label="💳 ポイント確認",
         style=discord.ButtonStyle.success,
         custom_id="slot:check_points",
-        row=0
+        row=1
     )
     async def check_points_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
         pts = get_points(itx.user.id)
@@ -105,7 +171,7 @@ class SlotPanelView(discord.ui.View):
         label="🎰 掛けなしスロット",
         style=discord.ButtonStyle.secondary,
         custom_id="slot:free",
-        row=1
+        row=2
     )
     async def free_slot(self, itx: discord.Interaction, btn: discord.ui.Button):
         reels = spin_slot()
@@ -120,48 +186,58 @@ class SlotPanelView(discord.ui.View):
         label="🎰 10P スロット",
         style=discord.ButtonStyle.primary,
         custom_id="slot:bet10",
-        row=2
+        row=3
     )
     async def bet10_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
-        await play_slot(itx, 10)
+        await start_game(itx, 10)
 
     @discord.ui.button(
         label="🎰 50P スロット",
         style=discord.ButtonStyle.primary,
         custom_id="slot:bet50",
-        row=2
+        row=3
     )
     async def bet50_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
-        await play_slot(itx, 50)
+        await start_game(itx, 50)
 
     @discord.ui.button(
         label="🎰 100P スロット",
         style=discord.ButtonStyle.danger,
         custom_id="slot:bet100",
-        row=2
+        row=3
     )
     async def bet100_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
-        await play_slot(itx, 100)
+        await start_game(itx, 100)
 
 
-async def play_slot(itx, bet):
+async def start_game(itx, bet):
+    """ゲーム開始処理"""
     pts = get_points(itx.user.id)
+    
+    # 進行中チェック
+    if itx.user.id in games:
+        await itx.response.send_message(
+            "❌ ゲーム進行中です。「🔍 途中のゲーム」から再開してください",
+            ephemeral=True
+        )
+        return
+    
+    # ポイントチェック
     if pts < bet:
         await itx.response.send_message(
             f"❌ ポイントが足りません！（所持：{pts}P / 必要：{bet}P）",
             ephemeral=True
         )
         return
-    reels = spin_slot()
-    gain, result_text = calc_payout(reels, bet)
-    new_total = add_points(itx.user.id, gain)
-    await itx.response.send_message(
-        f"🎰 {reels[0]} | {reels[1]} | {reels[2]}\n"
-        f"{result_text}\n"
-        f"💳 合計：{new_total}P",
-        ephemeral=True
+    
+    # ゲーム開始
+    view = SlotGameView(itx.user.id, bet)
+    embed = discord.Embed(
+        title="🎰 スロットマシン",
+        description=f"賭け：{bet}P\n下の「🎰 回す」を押してスタート！",
+        color=0xFFD700
     )
-    await send_result_embed(itx.client, itx.user, reels, result_text, gain, new_total, bet)
+    await itx.response.send_message(embed=embed, view=view, ephemeral=True)
 
 
 async def setup(tree: app_commands.CommandTree):
@@ -173,6 +249,7 @@ async def setup(tree: app_commands.CommandTree):
         embed = discord.Embed(
             title="🎰 スロットマシン",
             description=(
+                "🔍 **途中のゲーム** → 消しても再表示\n"
                 "💳 **ポイント確認** → 現在の所持ポイントを表示\n"
                 "🍀 **掛けなし** → 結果だけ楽しむ\n"
                 "💰 **掛けあり** → 当たればポイント増！\n"
