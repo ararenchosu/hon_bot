@@ -9,7 +9,8 @@ from features.slots_panel import setup as slots_setup
 from features.blackjack_panel import setup as bj_setup
 from features.highlow_panel import setup as hl_setup
 from features.point_admin_panel import setup as point_admin_setup
-import features.embed_sender as embed_sender  # ✅ 追加
+import features.embed_sender as embed_sender
+import features.clear_messages as clear_messages  # ✅ 追加
 import features.othello as othello
 import features.othello_panel as othello_panel
 import features.auth_panel as auth_panel
@@ -91,8 +92,10 @@ async def on_ready():
     print("  ✅ highlow_panel → /ハイローパネル設置")
     await point_admin_setup(tree)
     print("  ✅ point_admin_panel → /ポイント付与パネル設置")
-    await embed_sender.setup(tree)  # ✅ 追加
+    await embed_sender.setup(tree)
     print("  ✅ embed_sender → /emb")
+    await clear_messages.setup(tree)  # ✅ 追加
+    print("  ✅ clear_messages → /メッセージ全削除")
     await othello.setup(tree)
     await othello_panel.setup(tree)
     await auth_panel.setup(tree)
