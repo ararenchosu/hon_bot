@@ -16,7 +16,6 @@ POINT_FILE = "kn_points_data.json"
 
 os.makedirs(BACKUP_DIR, exist_ok=True)
 
-# ========== 自動バックアップ実行時間 ==========
 BACKUP_HOURS = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24]
 auto_backup_task = None
 
@@ -132,9 +131,7 @@ def start_auto_backup(client):
         schedule_str = ", ".join(f"{h}時" for h in BACKUP_HOURS)
         print(f"✅ 定刻バックアップ開始（毎日 {schedule_str}）")
 
-# ========== パネル埋め込み内容を生成する共通関数 ==========
 def get_panel_embed():
-    """最新情報を反映した埋め込みを返す"""
     latest = get_latest_backup()
     schedule_str = " / ".join(f"{h}時" for h in BACKUP_HOURS)
     embed = discord.Embed(
@@ -155,6 +152,8 @@ def get_panel_embed():
         inline=False
     )
     return embed
+
+# ========== 各Viewを完全分離 ==========
 
 class BackupPanelView(discord.ui.View):
     def __init__(self):
@@ -177,10 +176,7 @@ class BackupPanelView(discord.ui.View):
         if not await self.check_owner(itx):
             return
         path = create_backup("手動")
-        # ✅ 埋め込みだけ更新、Viewはそのまま維持
-        await itx.response.edit_message(
-            embed=get_panel_embed()
-        )
+        await itx.response.edit_message(embed=get_panel_embed())
         await itx.followup.send(
             f"✅ バックアップを保存\n📁 `{path}`\n✅ 古いバックアップは削除済み",
             ephemeral=True
@@ -200,14 +196,8 @@ class BackupPanelView(discord.ui.View):
     async def refresh_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
         if not await self.check_owner(itx):
             return
-        # ✅ 埋め込みだけ更新
-        await itx.response.edit_message(
-            embed=get_panel_embed()
-        )
-        await itx.followup.send(
-            "✅ 情報を更新しました",
-            ephemeral=True
-        )
+        await itx.response.edit_message(embed=get_panel_embed())
+        await itx.followup.send("✅ 情報を更新しました", ephemeral=True)
 
     @discord.ui.button(
         label="📂 保存状況を確認",
@@ -244,13 +234,14 @@ class BackupPanelView(discord.ui.View):
                 "❌ 復元可能なバックアップがありません", ephemeral=True
             )
             return
-        # ✅ 動的にインスタンス生成（永続登録済みなのでcustom_idは固定）
+        # 復元確認用Viewを表示
         await itx.response.send_message(
-            f"⚠️ バックアップから復元しますか？\n`{latest}`\n"
-            "※ 現在のデータは上書きされます",
-            view=RestoreConfirmView(latest),
+            f"⚠️ バックアップから復元しますか？\n`{latest}`\n※ 現在のデータは上書きされます",
+            view=RestoreConfirmView(),
             ephemeral=True
         )
+        # 選択されたバックアップ名を一時的に保持
+        itx.client._pending_restore = latest
 
     @discord.ui.button(
         label="🔄 Botを再起動",
@@ -265,7 +256,6 @@ class BackupPanelView(discord.ui.View):
             ephemeral=True
         )
         set_reason("restart_button")
-        
         await send_status_embed(
             itx.client,
             title="🔄 再起動実行",
@@ -292,9 +282,8 @@ class BackupPanelView(discord.ui.View):
         await delayed_exit()
 
 class RestoreConfirmView(discord.ui.View):
-    def __init__(self, backup_name):
+    def __init__(self):
         super().__init__(timeout=None)
-        self.backup_name = backup_name
 
     @discord.ui.button(
         label="✅ 復元を実行",
@@ -307,7 +296,15 @@ class RestoreConfirmView(discord.ui.View):
                 "❌ オーナーのみ実行可能です", ephemeral=True
             )
             return
-        ok, msg = restore_backup(self.backup_name)
+        # 一時的に保持した名前を取得
+        backup_name = getattr(itx.client, "_pending_restore", None)
+        if not backup_name:
+            await itx.response.send_message(
+                "❌ 復元するバックアップが見つかりません。もう一度最初から操作してください",
+                ephemeral=True
+            )
+            return
+        ok, msg = restore_backup(backup_name)
         if ok:
             await itx.response.edit_message(
                 content=f"✅ {msg}\n🔄 続けて「Botを再起動」ボタンを押してください",
@@ -316,13 +313,13 @@ class RestoreConfirmView(discord.ui.View):
             await send_status_embed(
                 itx.client,
                 title="📥 復元実行",
-                description=f"オーナーによりバックアップから復元されました。\n`{self.backup_name}`",
+                description=f"オーナーによりバックアップから復元されました。\n`{backup_name}`",
                 color=0x9B59B6
             )
+            # 一時データ削除
+            delattr(itx.client, "_pending_restore")
         else:
-            await itx.response.edit_message(
-                content=f"❌ 失敗：{msg}", view=None
-            )
+            await itx.response.edit_message(content=f"❌ 失敗：{msg}", view=None)
 
     @discord.ui.button(
         label="❌ キャンセル",
@@ -330,17 +327,19 @@ class RestoreConfirmView(discord.ui.View):
         custom_id="backup:restore_cancel"
     )
     async def cancel(self, itx: discord.Interaction, btn: discord.ui.Button):
+        if hasattr(itx.client, "_pending_restore"):
+            delattr(itx.client, "_pending_restore")
         await itx.response.edit_message(content="✅ キャンセルしました", view=None)
 
 async def setup(tree: app_commands.CommandTree):
     bot = tree.client
     
-    # ✅ 重複登録を防止
-    if not hasattr(bot, "_backup_panel_registered"):
+    # ✅ 起動時に必ず登録（二重登録防止）
+    if not hasattr(bot, "_backup_views_registered"):
         bot.add_view(BackupPanelView())
-        # RestoreConfirmViewはインスタンス引数なしで登録（custom_idだけ紐付け）
-        bot.add_view(RestoreConfirmView("__persistent__"))
-        bot._backup_panel_registered = True
+        bot.add_view(RestoreConfirmView())
+        bot._backup_views_registered = True
+        print("✅ バックアップパネル 永続View登録完了")
     
     start_auto_backup(bot)
     
