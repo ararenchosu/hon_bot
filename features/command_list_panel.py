@@ -2,15 +2,15 @@ import discord
 from discord import app_commands
 
 class CommandListView(discord.ui.View):
-    def __init__(self):
+    def __init__(self, all_commands):
         super().__init__(timeout=None)  # 永続表示
         self.page = 0
         self.items_per_page = 5  # 1ページ5件表示
+        self.all_commands = all_commands  # ✅ 一覧を保持
 
-    def make_embed(self, all_commands):
-        # ✅ コマンド名・説明文を自動取得
+    def make_embed(self):
         cmd_list = []
-        for cmd in all_commands:
+        for cmd in self.all_commands:
             cmd_list.append({
                 "name": f"/{cmd.name}",
                 "desc": cmd.description or "説明なし"
@@ -27,7 +27,6 @@ class CommandListView(discord.ui.View):
             color=0x3498DB
         )
 
-        # ✅ 区切り線付きで見やすく表示
         for info in page_items:
             embed.add_field(
                 name=f"🔹 {info['name']}",
@@ -42,41 +41,42 @@ class CommandListView(discord.ui.View):
         embed.set_footer(text=f"最終更新：{discord.utils.utcnow().strftime('%H:%M:%S')} UTC")
         return embed
 
-    # ✅ 更新ボタン：最新の状態に即時切替
     @discord.ui.button(label="🔄 更新", style=discord.ButtonStyle.success, custom_id="cmdlist:refresh")
     async def refresh_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
         self.page = 0
-        await itx.response.edit_message(embed=self.make_embed(itx.tree.get_commands()), view=self)
+        # ✅ Botから最新のコマンド一覧を再取得
+        self.all_commands = itx.client.tree.get_commands()
+        await itx.response.edit_message(embed=self.make_embed(), view=self)
 
     @discord.ui.button(label="◀️ 前へ", style=discord.ButtonStyle.secondary, custom_id="cmdlist:prev")
     async def prev_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
         if self.page > 0:
             self.page -= 1
-            await itx.response.edit_message(embed=self.make_embed(itx.tree.get_commands()), view=self)
+            await itx.response.edit_message(embed=self.make_embed(), view=self)
         else:
             await itx.response.defer()
 
     @discord.ui.button(label="次へ ▶️", style=discord.ButtonStyle.primary, custom_id="cmdlist:next")
     async def next_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
-        max_page = (len(itx.tree.get_commands()) + self.items_per_page - 1) // self.items_per_page - 1
-        if self.page < max_page:
+        total_pages = (len(self.all_commands) + self.items_per_page - 1) // self.items_per_page
+        if self.page < total_pages - 1:
             self.page += 1
-            await itx.response.edit_message(embed=self.make_embed(itx.tree.get_commands()), view=self)
+            await itx.response.edit_message(embed=self.make_embed(), view=self)
         else:
             await itx.response.defer()
 
 async def setup(tree: app_commands.CommandTree):
     bot = tree.client
-    bot.add_view(CommandListView())
 
     @tree.command(
         name="コマンド確認パネル",
         description="コマンド一覧を表示（更新ボタン付き）"
     )
     async def cmd_list_panel(itx: discord.Interaction):
-        view = CommandListView()
+        all_cmds = tree.get_commands()
+        view = CommandListView(all_cmds)
         await itx.response.send_message(
-            embed=view.make_embed(tree.get_commands()),
+            embed=view.make_embed(),
             view=view,
             ephemeral=False
         )
