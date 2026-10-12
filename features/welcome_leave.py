@@ -2,23 +2,14 @@ import discord
 from datetime import datetime
 from core.common import JST, WELCOME_LEAVE_CHANNEL_ID
 
-def get_total_member_count(guild: discord.Guild) -> int:
-    """サーバー内の全メンバー数（Bot含む）を返す"""
-    return len(guild.members)
-
 def make_member_embed(member: discord.Member, is_join: bool = True) -> discord.Embed:
     created_at = member.created_at.astimezone(JST)
     now = datetime.now(JST)
     account_age_days = (now - created_at).days
     created_str = created_at.strftime("%Y-%m-%d %H:%M:%S JST")
     
-    # ✅ 参加直後・退出直後の正しい人数を計算
-    if is_join:
-        # 参加：これから加わるので +1
-        display_count = get_total_member_count(member.guild) + 1
-    else:
-        # 退出：既に除外されているのでそのまま取得
-        display_count = get_total_member_count(member.guild)
+    # ✅ そのまま取得するだけでOK！
+    total_count = len(member.guild.members)
     
     account_type = "🤖 Bot" if member.bot else "👤 ユーザー"
     
@@ -44,7 +35,7 @@ def make_member_embed(member: discord.Member, is_join: bool = True) -> discord.E
     embed.add_field(name="アカウント種類", value=account_type, inline=False)
     embed.add_field(
         name="👥 サーバー総人数",
-        value=f"**{display_count}人**",
+        value=f"**{total_count}人**",
         inline=False
     )
     embed.set_footer(text=f"サーバーID: {member.guild.id}")
@@ -66,4 +57,4 @@ async def on_member_remove(member: discord.Member) -> None:
 async def setup(bot: discord.Client) -> None:
     bot.event(on_member_join)
     bot.event(on_member_remove)
-    print("✅ welcome_leave イベント登録完了（人数計算修正版）")
+    print("✅ welcome_leave イベント登録完了（シンプル版）")
