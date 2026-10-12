@@ -51,28 +51,27 @@ class InviteDurationView(discord.ui.View):
 
         # QRコード生成
         qr_img = qrcode.make(invite.url)
-        qr_img = qr_img.resize((200, 200))  # サイズ調整
+        qr_img = qr_img.resize((200, 200))
         buffer = io.BytesIO()
         qr_img.save(buffer, format="PNG")
         buffer.seek(0)
         qr_file = discord.File(fp=buffer, filename="qrcode.png")
 
-        # ✅ 埋め込み：左にリンク、右にQRコード
+        # ✅ クリックできるリンク形式に変更
         embed = discord.Embed(
             title="🔗 サーバー招待リンク",
-            description="👇 リンクをタップまたは長押しでコピー！",
+            description="👇 リンクを押すとブラウザが開きます",
             color=0x2ECC71
         )
         embed.add_field(
             name="📋 招待リンク",
-            value=f"```\n{invite.url}\n```\n⏳ 有効期限：{expiry_text}",
+            value=f"[👉 ここを押してリンクを開く]({invite.url})\n```\n{invite.url}\n```\n⏳ 有効期限：{expiry_text}",
             inline=True
         )
-        # 空フィールドでスペースを作ってからQRコードを配置
         embed.add_field(name="　", value="　", inline=True)
-        embed.set_thumbnail(url="attachment://qrcode.png")  # ✅ 右横にQRコード
+        embed.set_thumbnail(url="attachment://qrcode.png")
 
-        # ボタン
+        # ボタンも追加
         dm_view = discord.ui.View()
         dm_view.add_item(discord.ui.Button(
             label="🔗 ブラウザで開く",
@@ -92,10 +91,10 @@ class InviteDurationView(discord.ui.View):
         if dm_success:
             message = (
                 "✅ 招待リンクをDMに送信しました！\n"
-                "リンクをタップ → コピー または QRコードを読み取ってください"
+                "リンクを押す → 開く / テキスト部分をコピー どちらも可能です"
             )
         else:
-            message = f"⚠️ DMに送信できませんでした。こちらをコピーしてください👇\n```\n{invite.url}\n```"
+            message = f"⚠️ DMに送信できませんでした👇\n[👉 ここを押して開く]({invite.url})\n```\n{invite.url}\n```"
 
         await itx.response.edit_message(content=message, view=None)
 
@@ -135,7 +134,7 @@ async def setup(tree: app_commands.CommandTree):
         embed = discord.Embed(
             title="🔗 招待リンク生成",
             description="下のボタンを押して招待リンクを作成できます\n"
-                        "✅ リンク＋QRコードがDMに届きます\n"
+                        "✅ 押して開く・テキストからコピー 両方可能\n"
                         "※ サーバー側にログは残りません",
             color=0x3498DB
         )
