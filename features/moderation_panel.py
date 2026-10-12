@@ -147,17 +147,25 @@ class ActionConfirmModal(discord.ui.Modal):
             if log_ch:
                 await log_ch.send(embed=embed)
 
-# ========== ユーザー選択ビュー ==========
+# ========== ユーザー選択ビュー（2.3.x対応） ==========
 class SelectTargetView(discord.ui.View):
     def __init__(self, action):
         super().__init__(timeout=120)
         self.action = action
         self.selected_user = None
+        # ✅ 装飾子不使用 → __init__内でUserSelectを追加
+        self.add_item(
+            discord.ui.UserSelect(
+                placeholder="対象ユーザーを選択",
+                min_values=1,
+                max_values=1
+            )
+        )
 
-    @discord.ui.user_select(placeholder="対象ユーザーを選択")
-    async def user_selected(self, itx: discord.Interaction, user: discord.Member):
-        self.selected_user = user
+    async def interaction_check(self, itx: discord.Interaction) -> bool:
+        self.selected_user = self.children[0].values[0]
         await self.process_selection(itx)
+        return False  # 二重実行防止
 
     async def process_selection(self, itx: discord.Interaction):
         target = self.selected_user
@@ -197,7 +205,6 @@ class SelectTargetView(discord.ui.View):
                 await itx.response.send_message(
                     f"⚠️ {target.mention} はBANされていません", ephemeral=True
                 )
-
         else:
             await itx.response.send_modal(ActionConfirmModal(target, self.action))
 
