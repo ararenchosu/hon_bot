@@ -34,7 +34,7 @@ def set_points(user_id: int, amount: int):
     data[str(user_id)] = amount
     save_data(data)
 
-# ========== ユーザー選択（2.3.x形式） ==========
+# ========== ユーザー選択 ==========
 class SelectUserView(discord.ui.View):
     def __init__(self, callback):
         super().__init__(timeout=120)
@@ -57,7 +57,12 @@ class PointAdminView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(label="➕ ポイントを付与", style=discord.ButtonStyle.success, row=0, custom_id="point:add")
+    @discord.ui.button(
+        label="➕ ポイントを付与",
+        style=discord.ButtonStyle.success,
+        row=0,
+        custom_id="point:add"
+    )
     async def add_btn(self, itx: discord.Interaction, btn):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
@@ -80,9 +85,18 @@ class PointAdminView(discord.ui.View):
                     )
             await inter.response.send_modal(AmountModal())
 
-        await itx.response.send_message("対象ユーザーを選択してください", view=SelectUserView(on_user_selected), ephemeral=True)
+        await itx.response.send_message(
+            "対象ユーザーを選択してください",
+            view=SelectUserView(on_user_selected),
+            ephemeral=True
+        )
 
-    @discord.ui.button(label="➖ ポイントを減算", style=discord.ButtonStyle.danger, row=0, custom_id="point:sub")
+    @discord.ui.button(
+        label="➖ ポイントを減算",
+        style=discord.ButtonStyle.danger,
+        row=0,
+        custom_id="point:sub"
+    )
     async def sub_btn(self, itx: discord.Interaction, btn):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
@@ -105,9 +119,18 @@ class PointAdminView(discord.ui.View):
                     )
             await inter.response.send_modal(AmountModal())
 
-        await itx.response.send_message("対象ユーザーを選択してください", view=SelectUserView(on_user_selected), ephemeral=True)
+        await itx.response.send_message(
+            "対象ユーザーを選択してください",
+            view=SelectUserView(on_user_selected),
+            ephemeral=True
+        )
 
-    @discord.ui.button(label="🔢 ポイントを設定", style=discord.ButtonStyle.primary, row=1, custom_id="point:set")
+    @discord.ui.button(
+        label="🔢 ポイントを設定",
+        style=discord.ButtonStyle.primary,
+        row=1,
+        custom_id="point:set"
+    )
     async def set_btn(self, itx: discord.Interaction, btn):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
@@ -129,9 +152,18 @@ class PointAdminView(discord.ui.View):
                     )
             await inter.response.send_modal(AmountModal())
 
-        await itx.response.send_message("対象ユーザーを選択してください", view=SelectUserView(on_user_selected), ephemeral=True)
+        await itx.response.send_message(
+            "対象ユーザーを選択してください",
+            view=SelectUserView(on_user_selected),
+            ephemeral=True
+        )
 
-    @discord.ui.button(label="📊 ポイント確認", style=discord.ButtonStyle.secondary, row=1, custom_id="point:check")
+    @discord.ui.button(
+        label="📊 ポイント確認",
+        style=discord.ButtonStyle.secondary,
+        row=1,
+        custom_id="point:check"
+    )
     async def check_btn(self, itx: discord.Interaction, btn):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
@@ -144,15 +176,23 @@ class PointAdminView(discord.ui.View):
                 ephemeral=True
             )
 
-        await itx.response.send_message("対象ユーザーを選択してください", view=SelectUserView(on_user_selected), ephemeral=True)
+        await itx.response.send_message(
+            "対象ユーザーを選択してください",
+            view=SelectUserView(on_user_selected),
+            ephemeral=True
+        )
 
-async def setup(tree: app_commands.CommandTree):
-    bot = tree.client
-    if not hasattr(bot, "_point_views_registered"):
+# ✅ 引数を統一：setup(tree, bot=None)
+async def setup(tree: app_commands.CommandTree, bot=None):
+    if bot is not None and not hasattr(bot, "_point_admin_registered"):
         bot.add_view(PointAdminView())
-        bot._point_views_registered = True
+        bot._point_admin_registered = True
+        print("✅ point_admin_panel 永続View登録完了")
 
-    @tree.command(name="ポイント管理パネル", description="ポイント付与・設定パネル（オーナー専用）")
+    @tree.command(
+        name="ポイント管理パネル",
+        description="ポイント付与・設定パネル（オーナー専用）"
+    )
     @app_commands.check(is_owner)
     async def cmd(itx: discord.Interaction):
         embed = discord.Embed(title="💰 ポイント管理パネル", color=0xF1C40F)
