@@ -16,7 +16,7 @@ import features.moderation_panel as moderation_panel
 import features.security_panel as security_panel
 import features.invite_link as invite_link
 import features.backup_panel as backup_panel
-import features.command_list_panel as command_list_panel  # ✅ 追加
+import features.command_list_panel as command_list_panel
 import features.othello as othello
 import features.othello_panel as othello_panel
 import features.auth_panel as auth_panel
@@ -27,9 +27,7 @@ import features.welcome_leave as welcome_leave
 import features.voice_channel_panel as voice_panel
 import features.ranking_panel as ranking_panel
 
-# ✅ タイムゾーン：日本標準時
 JST = timezone(timedelta(hours=9))
-# ✅ 通知先チャンネル（固定）
 STATUS_LOG_CHANNEL_ID = 1559119439981449256
 REASON_FILE = ".last_stop_reason"
 
@@ -47,7 +45,6 @@ intents.members = True
 bot = discord.Client(intents=intents)
 tree = app_commands.CommandTree(bot)
 
-# ========== 共通：ステータス通知送信 ==========
 def get_jst_now():
     return datetime.now(JST)
 
@@ -87,14 +84,12 @@ def get_and_clear_reason():
         return reason
     return None
 
-# ========== 監視イベント ==========
 @bot.event
 async def on_message(message):
     if message.guild and not message.author.bot:
         await security_panel.check_forbidden_words(message)
         await security_panel.check_link_restriction(message)
 
-# ========== 起動時：通知を判別して送信 ==========
 @bot.event
 async def on_ready():
     print(f"\n✅ ログイン：{bot.user}")
@@ -116,8 +111,8 @@ async def on_ready():
         )
         from features.invite_link import InvitePanelView, InviteDurationView
         from features.backup_panel import BackupPanelView
-        from features.command_list_panel import CommandListView  # ✅ 追加
-
+        from features.command_list_panel import CommandListView
+        
         bot.add_view(LotteryPanelView())
         bot.add_view(PointCheckPanelView())
         bot.add_view(LoginBonusPanelView())
@@ -135,7 +130,12 @@ async def on_ready():
         bot.add_view(InvitePanelView())
         bot.add_view(InviteDurationView())
         bot.add_view(BackupPanelView())
-        bot.add_view(CommandListView())  # ✅ 追加
+        
+        # ✅ CommandListView に tree をセットして登録
+        clv = CommandListView()
+        clv.tree = tree
+        bot.add_view(clv)
+        
         bot.add_view(othello_panel.OthelloPanelView())
         bot.add_view(call_panel.CallPanelView(bot))
         bot.add_view(auth_panel.AuthPanelView())
@@ -146,7 +146,7 @@ async def on_ready():
         print("✅ 全View登録完了")
     except Exception as e:
         print(f"⚠️ View登録エラー: {e}")
-
+    
     print("\n🔄 コマンド登録中...")
     await lottery_setup(tree)
     print("  ✅ lottery_panel")
@@ -172,7 +172,7 @@ async def on_ready():
     print("  ✅ invite_link")
     await backup_panel.setup(tree)
     print("  ✅ backup_panel")
-    await command_list_panel.setup(tree)  # ✅ 追加
+    await command_list_panel.setup(tree)
     print("  ✅ command_list_panel コマンド一覧")
     await othello.setup(tree)
     await othello_panel.setup(tree)
@@ -186,23 +186,22 @@ async def on_ready():
     print("  ✅ voice_channel_panel")
     await ranking_panel.setup(tree)
     print("  ✅ ranking_panel")
-
+    
     print("✅ 全コマンド登録完了")
     print("\n📋 コマンド一覧：")
     for cmd in tree.get_commands():
         print(f"   /{cmd.name}")
-
+    
     print("\n🔄 グローバル同期中...")
     synced = await tree.sync()
     print(f"✅ 同期完了！合計 {len(synced)} 件")
     for cmd in synced:
         print(f"   /{cmd.name}")
-
+    
     print("\n🔄 自動更新タスク起動中...")
     asyncio.create_task(ranking_panel.auto_update_task(bot))
     print("✅ ランキング自動更新タスク起動完了")
-
-    # ✅ 起動通知
+    
     if last_reason == "restart_button":
         await send_status_embed(
             title="✅ 再起動完了",
@@ -215,11 +214,9 @@ async def on_ready():
             description="機能追加又は.py更新により再起動が実行されました。\n入退室ログを監視中…",
             color=0x9B59B6
         )
-
     print("✅ 起動通知送信完了")
     print("\n✅ 起動完了\n")
 
-# ========== 切断/停止時イベント ==========
 @bot.event
 async def on_close():
     if os.path.exists(REASON_FILE):
