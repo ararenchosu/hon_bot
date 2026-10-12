@@ -25,8 +25,8 @@ import features.welcome_leave as welcome_leave
 import features.voice_channel_panel as voice_panel
 import features.ranking_panel as ranking_panel
 
-# ✅ ここにメッセージを送るチャンネルIDを入れる
-STATUS_LOG_CHANNEL_ID = 1559119439981449256  # ← 自分のチャンネルIDに書き換える
+# ✅ 通知先チャンネル（固定）
+STATUS_LOG_CHANNEL_ID = 1559119439981449256
 
 BOT_TOKEN = os.getenv("DISCORD_TOKEN")
 if not BOT_TOKEN:
@@ -42,27 +42,22 @@ intents.members = True
 bot = discord.Client(intents=intents)
 tree = app_commands.CommandTree(bot)
 
-# ========== 共通：ステータス通知送信関数 ==========
+# ========== 共通：ステータス通知送信 ==========
 async def send_status_embed(title: str, description: str, color: int):
-    """ステータスメッセージを送信する共通処理"""
-    if not STATUS_LOG_CHANNEL_ID or STATUS_LOG_CHANNEL_ID == 123456789012345678:
-        return  # ID未設定時はスキップ
+    if not STATUS_LOG_CHANNEL_ID:
+        return
     try:
         channel = bot.get_channel(STATUS_LOG_CHANNEL_ID)
         if not channel:
-            print(f"⚠️ チャンネルが見つかりません (ID: {STATUS_LOG_CHANNEL_ID})")
+            print(f"⚠️ チャンネルが見つかりません")
             return
-        embed = discord.Embed(
-            title=title,
-            description=description,
-            color=color
-        )
+        embed = discord.Embed(title=title, description=description, color=color)
         embed.set_footer(
             text=f"時刻：{discord.utils.format_dt(discord.utils.utcnow(), 'F')}"
         )
         await channel.send(embed=embed)
     except Exception as e:
-        print(f"⚠️ ステータス通知送信エラー: {e}")
+        print(f"⚠️ 通知送信エラー: {e}")
 
 # ========== 監視イベント ==========
 @bot.event
@@ -71,7 +66,7 @@ async def on_message(message):
         await security_panel.check_forbidden_words(message)
         await security_panel.check_link_restriction(message)
 
-# ========== 起動処理 ==========
+# ========== 起動時：種類を判別して通知 ==========
 @bot.event
 async def on_ready():
     print(f"\n✅ ログイン：{bot.user}")
@@ -171,23 +166,57 @@ async def on_ready():
     asyncio.create_task(ranking_panel.auto_update_task(bot))
     print("✅ ランキング自動更新タスク起動完了")
 
-    # ✅ 起動完了メッセージ送信
-    await send_status_embed(
-        title="✅ 起動完了",
-        description="Botが正常に起動しました。",
-        color=0x2ECC71
-    )
+    # ✅ 起動通知：前回の停止理由に応じてメッセージを切り替え
+    import os
+    reason_file = ".last_stop_reason"
+    if os.path.exists(reason_file):
+        with open(reason_file, "r", encoding="utf-8") as f:
+            last_reason = f.read().strip()
+        os.remove(reason_file)  # 読み取ったら削除
+        
+        if last_reason == "update":
+            await send_status_embed(
+                title="✅ アップデート完了・自動再起動",
+                description="ファイル更新により一時停止していました。\nアップデート後、Botが自動的に起動されました。",
+                color=0x9B59B6
+            )
+        elif last_reason == "restart_button":
+            await send_status_embed(
+                title="✅ 再起動完了",
+                description="ボタン操作により再起動されました。",
+                color=0xF39C12
+            )
+        else:
+            await send_status_embed(
+                title="✅ 再起動・起動完了",
+                description="Botが正常に起動しました。",
+                color=0x2ECC71
+            )
+    else:
+        # 初回起動または手動起動
+        await send_status_embed(
+            title="✅ Bot起動",
+            description="Botが正常に起動しました。",
+            color=0x2ECC71
+        )
+
     print("✅ 起動通知送信完了")
     print("\n✅ 起動完了\n")
 
-# ========== 停止時イベント ==========
+# ========== 停止時：常に実行 ==========
 @bot.event
 async def on_close():
-    """Botが閉じられる直前に実行"""
-    await send_status_embed(
-        title="🛑 停止/再起動",
-        description="Botが停止されました。",
-        color=0xE74C3C
-    )
+    """停止時は常に実行：理由をファイルに記録"""
+    reason_file = ".last_stop_reason"
+    
+    # 理由ファイルがない場合＝ファイル更新/外部からの停止
+    if not os.path.exists(reason_file):
+        with open(reason_file, "w", encoding="utf-8") as f:
+            f.write("update")
+        await send_status_embed(
+            title="⏸️ アップデートによる一時停止",
+            description="ファイル更新のためBotを一時停止しました。\nアップデート後、自動的に再起動されます。",
+            color=0x9B59B6
+        )
 
 bot.run(BOT_TOKEN)
