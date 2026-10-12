@@ -52,7 +52,6 @@ def get_latest_role_give_panel():
             "color": int(r[4])
         }
     return None
-# ===========================================
 
 # ========== 重複データ一括整理 ==========
 def cleanup_duplicate_roles():
@@ -79,7 +78,6 @@ def cleanup_duplicate_roles():
     conn.commit()
     conn.close()
     return removed_count
-# ===========================================
 
 def get_selectable_roles(guild_id):
     conn = get_connection()
@@ -124,7 +122,7 @@ def remove_selectable_role(guild_id, role_id):
 
 class RoleSelectPanelView(discord.ui.View):
     def __init__(self):
-        super().__init__(timeout=None)
+        super().__init__(timeout=None)  # ✅ 永久有効
 
     @discord.ui.button(label="🎖️ ロールを選択して取得", style=discord.ButtonStyle.primary, custom_id="rpanel:select", row=0)
     async def select_role(self, itx: discord.Interaction, btn: discord.ui.Button):
@@ -135,18 +133,20 @@ class RoleSelectPanelView(discord.ui.View):
                 ephemeral=True
             )
             return
+
         class RoleSelectView(discord.ui.View):
             def __init__(self):
-                super().__init__()
-                self.add_item(discord.ui.Select(
-                    placeholder="取得するロールを選択",
-                    max_values=len(roles),
-                    options=[discord.SelectOption(label=name, value=rid) for rid, name in roles]
-                ))
-            async def interaction_check(self, inter: discord.Interaction) -> bool:
-                selected = self.children[0].values
+                super().__init__(timeout=None)
+                self.role_list = roles
+
+            @discord.ui.select(
+                placeholder="取得するロールを選択",
+                max_values=len(roles),
+                options=[discord.SelectOption(label=name, value=rid) for rid, name in roles]
+            )
+            async def select_callback(self, inter: discord.Interaction, selected_values):
                 added = []
-                for rid in selected:
+                for rid in selected_values:
                     r = inter.guild.get_role(int(rid))
                     if r and r not in inter.user.roles:
                         await inter.user.add_roles(r)
@@ -159,7 +159,7 @@ class RoleSelectPanelView(discord.ui.View):
                     await inter.response.send_message(
                         "✅ 選択されたロールは既に付与されています", ephemeral=True
                     )
-                return True
+
         await itx.response.send_message(
             "取得するロールを選択してください：", view=RoleSelectView(), ephemeral=True
         )
@@ -175,23 +175,25 @@ class RoleSelectPanelView(discord.ui.View):
                 "❌ 登録されているロールがありません", ephemeral=True
             )
             return
+
         class RemoveSelectView(discord.ui.View):
             def __init__(self):
-                super().__init__()
-                self.add_item(discord.ui.Select(
-                    placeholder="削除するロールを選択",
-                    max_values=1,
-                    options=[discord.SelectOption(label=name, value=rid) for rid, name in roles]
-                ))
-            async def interaction_check(self, inter: discord.Interaction) -> bool:
-                rid = self.children[0].values[0]
+                super().__init__(timeout=None)
+
+            @discord.ui.select(
+                placeholder="削除するロールを選択",
+                max_values=1,
+                options=[discord.SelectOption(label=name, value=rid) for rid, name in roles]
+            )
+            async def remove_callback(self, inter: discord.Interaction, selected_values):
+                rid = selected_values[0]
                 r = inter.guild.get_role(int(rid))
                 remove_selectable_role(inter.guild_id, rid)
                 await inter.response.send_message(
                     f"🗑️ 「{r.name if r else '不明なロール'}」を選択候補から削除しました",
                     ephemeral=True
                 )
-                return True
+
         await itx.response.send_message(
             "削除するロールを選択してください：", view=RemoveSelectView(), ephemeral=True
         )
@@ -206,6 +208,7 @@ class RoleSelectPanelView(discord.ui.View):
         default_desc = latest["description"] if latest else (
             "ボタンから必要なロールを選択して取得してください。"
         )
+
         class EditModal(discord.ui.Modal, title="ロールパネル編集"):
             title_in = discord.ui.TextInput(label="タイトル", default=default_title)
             desc_in = discord.ui.TextInput(
@@ -227,6 +230,7 @@ class RoleSelectPanelView(discord.ui.View):
                     0x3498db
                 )
                 await inter.followup.send("✅ 更新・保存完了", ephemeral=True)
+
         await itx.response.send_modal(EditModal())
 
     @discord.ui.button(label="➕ 付与ロール追加", style=discord.ButtonStyle.success, custom_id="rpanel:add", row=1)
@@ -234,12 +238,13 @@ class RoleSelectPanelView(discord.ui.View):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
             return
+
         class RolePickerView(discord.ui.View):
             def __init__(self):
-                super().__init__()
-                self.add_item(discord.ui.RoleSelect(placeholder="追加するロールを選択"))
-            async def interaction_check(self, inter: discord.Interaction) -> bool:
-                role = self.children[0].values[0]
+                super().__init__(timeout=None)
+
+            @discord.ui.role_select(placeholder="追加するロールを選択")
+            async def role_selected(self, inter: discord.Interaction, role: discord.Role):
                 result = add_selectable_role(inter.guild_id, role.id, role.name)
                 if result == "duplicate":
                     await inter.response.send_message(
@@ -251,7 +256,7 @@ class RoleSelectPanelView(discord.ui.View):
                         f"✅ 「{role.name}」を選択候補に追加しました！",
                         ephemeral=True
                     )
-                return True
+
         await itx.response.send_message(
             "追加するロールを選択してください：", view=RolePickerView(), ephemeral=True
         )
@@ -273,7 +278,6 @@ class RoleSelectPanelView(discord.ui.View):
                 ephemeral=True
             )
 
-    # ✅ 追加：パネル更新ボタン
     @discord.ui.button(label="🔄 パネル更新", style=discord.ButtonStyle.secondary, custom_id="rpanel:refresh", row=2)
     async def refresh_panel(self, itx: discord.Interaction, btn: discord.ui.Button):
         if not is_owner(itx):
@@ -291,9 +295,11 @@ class RoleSelectPanelView(discord.ui.View):
         await itx.response.edit_message(embed=embed)
         await itx.followup.send("✅ パネルを最新に更新しました", ephemeral=True)
 
+async def setup(tree: app_commands.CommandTree):
+    init_role_give_table()
+    bot = tree.client
+    bot.add_view(RoleSelectPanelView())  # ✅ 永久登録
 
-async def setup(tree):
-    init_role_give_table()  # 初回起動時にテーブル作成
     @tree.command(name="ロール付与パネル設置", description="選択式ロールパネル設置（オーナー専用）")
     async def cmd_role_panel(itx: discord.Interaction):
         if not is_owner(itx):
