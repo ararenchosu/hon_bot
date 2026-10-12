@@ -8,7 +8,7 @@ from .othello_board import OthelloBoard
 
 active_games = set()
 
-# ========== パネル保存/読み込み 追加 ==========
+# ========== パネル保存/読み込み ==========
 def save_othello_panel(channel_id: int, message_id: int, title: str, description: str, color: int):
     conn = get_connection()
     cur = conn.cursor()
@@ -55,27 +55,27 @@ def get_latest_othello_panel():
 
 class OthelloPanelView(discord.ui.View):
     def __init__(self):
-        super().__init__(timeout=None)
+        super().__init__(timeout=None)  # ✅ 永久有効
 
     @discord.ui.button(label="🎮 対戦開始", style=discord.ButtonStyle.primary, custom_id="othello_panel:challenge")
     async def challenge_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
         if itx.user.id in active_games:
             await itx.response.send_message("❌ あなたは既に対戦中です", ephemeral=True)
             return
+
         selected_opponent = None
         selection_done = asyncio.Event()
 
-        class OpponentSelect(discord.ui.UserSelect):
+        class OpponentSelectView(discord.ui.View):
             def __init__(self):
-                super().__init__(
-                    placeholder="対戦相手を選んでください",
-                    min_values=1,
-                    max_values=1
-                )
-            async def callback(self, inter: discord.Interaction):
+                super().__init__(timeout=60)
+
+            @discord.ui.user_select(placeholder="対戦相手を選んでください", min_values=1, max_values=1)
+            async def select_opponent(self, inter: discord.Interaction, user: discord.Member):
                 nonlocal selected_opponent
-                selected_opponent = self.values[0]
+                selected_opponent = user
                 selection_done.set()
+
                 if selected_opponent == inter.user:
                     await inter.response.send_message("❌ 自分自身とは対戦できません", ephemeral=True)
                     return
@@ -85,22 +85,19 @@ class OthelloPanelView(discord.ui.View):
                 if selected_opponent.id in active_games:
                     await inter.response.send_message(f"❌ {selected_opponent.mention} は既に対戦中です", ephemeral=True)
                     return
+
                 await inter.response.send_message(
                     f"✅ {selected_opponent.mention} に対戦を申し込みました。チャンネルを作成します…",
                     ephemeral=True
                 )
 
-        class SelectView(discord.ui.View):
-            def __init__(self):
-                super().__init__(timeout=60)
-                self.add_item(OpponentSelect())
-
-        select_view = SelectView()
+        select_view = OpponentSelectView()
         await itx.response.send_message(
             "👇 対戦相手を下から選んでください",
             view=select_view,
             ephemeral=True
         )
+
         try:
             await asyncio.wait_for(selection_done.wait(), timeout=60)
         except asyncio.TimeoutError:
@@ -118,6 +115,7 @@ class OthelloPanelView(discord.ui.View):
         category = None
         if OTHELLO_CATEGORY_ID and OTHELLO_CATEGORY_ID != 0:
             category = guild.get_channel(OTHELLO_CATEGORY_ID)
+
         overwrites = {
             guild.default_role: discord.PermissionOverwrite(view_channel=False),
             challenger: discord.PermissionOverwrite(view_channel=True, send_messages=True),
@@ -215,6 +213,7 @@ class OthelloPanelView(discord.ui.View):
             view=ar_view
         )
         await ar_view.wait()
+
         if ar_view.final_decision is None:
             await ticket_ch.send("⏰ 応答がないため、このチャンネルを削除します")
             await asyncio.sleep(3)
@@ -232,7 +231,6 @@ class OthelloPanelView(discord.ui.View):
             "下のボタンを押して対戦相手を選んでください。\n"
             "承諾されると専用チャンネルが自動作成されます。"
         )
-
         class EditModal(discord.ui.Modal, title="パネル編集"):
             title_in = discord.ui.TextInput(label="タイトル", default=default_title)
             desc_in = discord.ui.TextInput(
@@ -256,9 +254,8 @@ class OthelloPanelView(discord.ui.View):
                 await modal_itx.followup.send("✅ 更新・保存完了", ephemeral=True)
         await itx.response.send_modal(EditModal())
 
-    # ✅ 追加：パネル更新ボタン
     @discord.ui.button(label="🔄 パネル更新", style=discord.ButtonStyle.secondary, custom_id="othello_panel:refresh")
-    async def refresh_panel(self, itx: discord.Interaction, btn: discord.ui.Button):
+    async def refresh_panel(self, itx: discord.Interaction, btn):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
             return
@@ -274,8 +271,10 @@ class OthelloPanelView(discord.ui.View):
         await itx.response.edit_message(embed=embed)
         await itx.followup.send("✅ パネルを最新に更新しました", ephemeral=True)
 
-
 async def setup(tree):
+    bot = tree.client
+    bot.add_view(OthelloPanelView())  # ✅ 永久登録
+
     @tree.command(name="オセロパネル設置", description="オセロ対戦パネルを設置（オーナー専用）")
     async def cmd_othello_panel(itx: discord.Interaction):
         if not is_owner(itx):
