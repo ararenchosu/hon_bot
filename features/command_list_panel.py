@@ -4,7 +4,7 @@ from core.common import is_owner
 
 class CommandListView(discord.ui.View):
     def __init__(self):
-        super().__init__(timeout=None)  # ✅ 永久有効
+        super().__init__(timeout=None)  # ✅ 永続化
         self.page = 0
         self.items_per_page = 5
         self.all_commands = []
@@ -13,16 +13,23 @@ class CommandListView(discord.ui.View):
     def make_embed(self, all_commands=None):
         if all_commands is not None:
             self.all_commands = all_commands
+
         cmd_list = []
         for cmd in self.all_commands:
             cmd_list.append({
                 "name": f"/{cmd.name}",
                 "desc": cmd.description or "説明なし"
             })
-        total_pages = (len(cmd_list) + self.items_per_page - 1) // self.items_per_page
-        start = self.page * self.items_per_page
-        end = start + self.items_per_page
-        page_items = cmd_list[start:end]
+
+        if not cmd_list:
+            total_pages = 1
+            page_items = []
+        else:
+            total_pages = (len(cmd_list) + self.items_per_page - 1) // self.items_per_page
+            start = self.page * self.items_per_page
+            end = start + self.items_per_page
+            page_items = cmd_list[start:end]
+
         embed = discord.Embed(
             title=f"📋 コマンド一覧  ({self.page+1}/{total_pages}ページ)",
             description=f"登録済み：**{len(cmd_list)}件** ｜ 🔄 更新ボタンで最新になります",
@@ -49,8 +56,11 @@ class CommandListView(discord.ui.View):
         if not self.tree:
             await itx.response.send_message("⚠️ 読み込み中です。しばらくしてからお試しください。", ephemeral=True)
             return
+
         self.page = 0
+        # ✅ 最新のコマンド一覧を再取得
         self.all_commands = self.tree.get_commands()
+        # ✅ メッセージを確実に更新
         await itx.response.edit_message(embed=self.make_embed(), view=self)
 
     @discord.ui.button(label="◀️ 前へ", style=discord.ButtonStyle.secondary, custom_id="cmdlist:prev")
@@ -58,6 +68,7 @@ class CommandListView(discord.ui.View):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
             return
+
         if self.page > 0:
             self.page -= 1
             await itx.response.edit_message(embed=self.make_embed(), view=self)
@@ -69,6 +80,11 @@ class CommandListView(discord.ui.View):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
             return
+
+        if not self.all_commands:
+            await itx.response.send_message("⚠️ 先に「更新」を押して一覧を読み込んでください", ephemeral=True)
+            return
+
         total_pages = (len(self.all_commands) + self.items_per_page - 1) // self.items_per_page
         if self.page < total_pages - 1:
             self.page += 1
@@ -78,10 +94,13 @@ class CommandListView(discord.ui.View):
 
 async def setup(tree: app_commands.CommandTree):
     bot = tree.client
-    # ✅ 永続View登録
-    view_instance = CommandListView()
-    view_instance.tree = tree
-    bot.add_view(view_instance)  # ✅ Bot起動時に登録 → 再起動してもボタン有効
+
+    # ✅ 起動時に永続Viewを1回だけ登録
+    if not hasattr(bot, "_cmdlist_view_registered"):
+        persistent_view = CommandListView()
+        persistent_view.tree = tree
+        bot.add_view(persistent_view)
+        bot._cmdlist_view_registered = True
 
     @tree.command(
         name="コマンド確認パネル",
@@ -91,10 +110,12 @@ async def setup(tree: app_commands.CommandTree):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用コマンドです", ephemeral=True)
             return
+
         all_cmds = tree.get_commands()
         view = CommandListView()
         view.tree = tree
         view.all_commands = all_cmds
+
         await itx.response.send_message(
             embed=view.make_embed(),
             view=view,
