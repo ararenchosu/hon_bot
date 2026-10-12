@@ -3,6 +3,7 @@ from discord import app_commands
 from core.common import is_owner
 import os
 import shutil
+import sys
 from datetime import datetime
 
 BACKUP_DIR = "/data/backups"
@@ -21,7 +22,6 @@ class BackupPanelView(discord.ui.View):
         custom_id="backup:create"
     )
     async def backup_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
-        # ✅ オーナー以外は拒否
         if not is_owner(itx):
             await itx.response.send_message("❌ このボタンはオーナー専用です", ephemeral=True)
             return
@@ -40,7 +40,7 @@ class BackupPanelView(discord.ui.View):
             shutil.copy2(DB_PATH, backup_file)
             size_kb = os.path.getsize(backup_file) / 1024
 
-            # ✅ バックアップファイルをDMに送信
+            # DMにファイル送信
             file_for_dm = discord.File(backup_file, filename=f"backup_{timestamp}.db")
             dm_success = False
             try:
@@ -130,7 +130,6 @@ class RestoreConfirmView(discord.ui.View):
         style=discord.ButtonStyle.danger
     )
     async def do_restore(self, itx: discord.Interaction, btn: discord.ui.Button):
-        # ✅ 復元実行時もオーナー確認
         if not is_owner(itx):
             await itx.response.send_message("❌ この操作はオーナー専用です", ephemeral=True)
             return
@@ -141,13 +140,16 @@ class RestoreConfirmView(discord.ui.View):
             # 最新バックアップから復元
             shutil.copy2(self.backup_path, DB_PATH)
 
-            await itx.response.send_message(
-                f"✅ 復元完了！\n"
-                f"📂 復元元：`{self.filename}`\n"
-                f"💾 変更前のデータは `.current_backup` に退避済み\n"
-                "⚠️ Botを再起動して反映してください",
-                ephemeral=True
+            # ✅ 復元完了 → 再起動ボタンを表示
+            done_embed = discord.Embed(
+                title="✅ 復元完了！",
+                description=f"📂 復元元：`{self.filename}`\n"
+                            f"💾 変更前のデータは `.current_backup` に退避済み\n"
+                            f"🔽 下のボタンを押してBotを再起動してください",
+                color=0x2ECC71
             )
+            await itx.response.send_message(embed=done_embed, view=RestartView(), ephemeral=True)
+
         except Exception as e:
             await itx.response.send_message(f"❌ 復元失敗：{e}", ephemeral=True)
 
@@ -159,9 +161,33 @@ class RestoreConfirmView(discord.ui.View):
         await itx.response.edit_message(content="❌ キャンセルしました", embed=None, view=None)
 
 
+class RestartView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(
+        label="🔄 Botを再起動",
+        style=discord.ButtonStyle.primary,
+        custom_id="backup:restart_bot"
+    )
+    async def restart_bot(self, itx: discord.Interaction, btn: discord.ui.Button):
+        if not is_owner(itx):
+            await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
+            return
+
+        await itx.response.send_message(
+            "🔄 Botを停止します。\n"
+            "自動再起動設定が有効な場合、数秒後に復帰します ✅\n"
+            "復帰したらパネルの表示が切り替わっていることを確認してください！",
+            ephemeral=True
+        )
+        sys.exit(0)  # ホスト側で自動再起動される
+
+
 async def setup(tree: app_commands.CommandTree):
     bot = tree.client
     bot.add_view(BackupPanelView())
+    bot.add_view(RestartView())  # ✅ 再起動ボタン登録
 
     @tree.command(
         name="バックアップパネル",
@@ -176,9 +202,9 @@ async def setup(tree: app_commands.CommandTree):
 
 💾 バックアップ → 最新を保存 & ファイルをDM送信
 📂 確認 → 保存されている最新ファイルを表示
-🔄 最新を復元 → 最新を一発で復元
+🔄 最新を復元 → 最新を一発で復元 → 再起動ボタンが表示
 
-⚠️ 復元後はBot再起動が必要
+⚠️ 復元後は「🔄 Botを再起動」を押してください
 ⚠️ 最新1件のみ自動保持（古いものは自動削除）
             """,
             color=0xF39C12
