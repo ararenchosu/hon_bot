@@ -45,7 +45,6 @@ class AddPointsModal(discord.ui.Modal, title="➕ ポイントを付与"):
         placeholder="例：100 / -50",
         required=True
     )
-
     def __init__(self, target_user):
         super().__init__()
         self.target_user = target_user
@@ -72,7 +71,6 @@ class SetPointsModal(discord.ui.Modal, title="✏️ ポイントを設定"):
         placeholder="例：500",
         required=True
     )
-
     def __init__(self, target_user):
         super().__init__()
         self.target_user = target_user
@@ -97,18 +95,9 @@ class SelectUserView(discord.ui.View):
     def __init__(self, action):
         super().__init__(timeout=120)
         self.action = action
-        # 選択メニューを動的に追加
-        self.add_item(
-            discord.ui.UserSelect(
-                custom_id="select_user",
-                placeholder="ユーザーを選択してください"
-            )
-        )
 
-    async def interaction_check(self, itx: discord.Interaction) -> bool:
-        selected_user = itx.data["values"][0]
-        user = await itx.client.fetch_user(int(selected_user))
-
+    @discord.ui.user_select(placeholder="ユーザーを選択してください")
+    async def select_user(self, itx: discord.Interaction, user: discord.Member):
         if self.action == "add":
             await itx.response.send_modal(AddPointsModal(user))
         elif self.action == "set":
@@ -131,12 +120,11 @@ class SelectUserView(discord.ui.View):
             )
             embed.set_thumbnail(url=user.display_avatar.url)
             await itx.response.send_message(embed=embed, ephemeral=True)
-        return True
 
 # === メインパネル ===
 class PointAdminView(discord.ui.View):
     def __init__(self):
-        super().__init__(timeout=None)
+        super().__init__(timeout=None)  # ✅ 永久有効
 
     @discord.ui.button(label="➕ ポイントを付与", style=discord.ButtonStyle.success, custom_id="point:add", row=0)
     async def add_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
@@ -183,6 +171,9 @@ class PointAdminView(discord.ui.View):
         )
 
 async def setup(tree: app_commands.CommandTree):
+    bot = tree.client
+    bot.add_view(PointAdminView())  # ✅ 永久登録
+
     @tree.command(name="ポイント付与パネル設置", description="ポイント管理パネル設置（オーナー専用）")
     async def cmd(itx: discord.Interaction):
         if not is_owner(itx):
