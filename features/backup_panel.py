@@ -2,9 +2,6 @@ import discord
 from discord import app_commands
 import os
 import shutil
-import time
-import subprocess
-import sys
 from datetime import datetime
 from core.common import is_owner
 
@@ -15,30 +12,24 @@ POINT_FILE = "kn_points_data.json"
 
 os.makedirs(BACKUP_DIR, exist_ok=True)
 
-
 def get_latest_backup():
     backups = sorted(os.listdir(BACKUP_DIR), reverse=True)
     return backups[0] if backups else None
-
 
 def create_backup():
     now = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_path = os.path.join(BACKUP_DIR, f"backup_{now}")
     os.makedirs(backup_path, exist_ok=True)
-
     if os.path.exists(os.path.join(DATA_DIR, DB_FILE)):
         shutil.copy2(os.path.join(DATA_DIR, DB_FILE), backup_path)
     if os.path.exists(os.path.join(DATA_DIR, POINT_FILE)):
         shutil.copy2(os.path.join(DATA_DIR, POINT_FILE), backup_path)
-
     return backup_path
-
 
 def restore_backup(backup_name: str):
     backup_path = os.path.join(BACKUP_DIR, backup_name)
     if not os.path.exists(backup_path):
         return False, "バックアップが見つかりません"
-
     try:
         if os.path.exists(os.path.join(backup_path, DB_FILE)):
             shutil.copy2(os.path.join(backup_path, DB_FILE),
@@ -50,13 +41,12 @@ def restore_backup(backup_name: str):
     except Exception as e:
         return False, str(e)
 
-
 class BackupPanelView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
     async def check_owner(self, itx: discord.Interaction):
-        if not is_owner(itx.user):
+        if not is_owner(itx):  # ← .user 削除
             await itx.response.send_message(
                 "❌ オーナーのみ実行可能です", ephemeral=True
             )
@@ -130,13 +120,11 @@ class BackupPanelView(discord.ui.View):
             "5秒後に自動的に復帰します ✅",
             ephemeral=True
         )
-        # 5秒後に再起動するように予約
         import asyncio
         async def delayed_exit():
-            await asyncio.sleep(1)  # メッセージ送信を待つ
+            await asyncio.sleep(1)
             await itx.client.close()
         await delayed_exit()
-
 
 class RestoreConfirmView(discord.ui.View):
     def __init__(self, backup_name):
@@ -148,7 +136,7 @@ class RestoreConfirmView(discord.ui.View):
         style=discord.ButtonStyle.danger
     )
     async def do_restore(self, itx: discord.Interaction, btn: discord.ui.Button):
-        if not is_owner(itx.user):
+        if not is_owner(itx):  # ← .user 削除
             await itx.response.send_message(
                 "❌ オーナーのみ実行可能です", ephemeral=True
             )
@@ -171,11 +159,10 @@ class RestoreConfirmView(discord.ui.View):
     async def cancel(self, itx: discord.Interaction, btn: discord.ui.Button):
         await itx.response.edit_message(content="✅ キャンセルしました", view=None)
 
-
 async def setup(tree: app_commands.CommandTree):
     @tree.command(name="バックアップパネル", description="バックアップ管理パネルを表示")
     async def backup_panel_cmd(itx: discord.Interaction):
-        if not is_owner(itx.user):
+        if not is_owner(itx):  # ← .user 削除
             await itx.response.send_message(
                 "❌ オーナーのみ実行可能です", ephemeral=True
             )
