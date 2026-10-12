@@ -91,8 +91,8 @@ async def on_message(message):
         await security_panel.check_forbidden_words(message)
         await security_panel.check_link_restriction(message)
 
-# ✅ コマンド実行前チェック用共通関数
-async def pre_check_command(itx: discord.Interaction):
+# ✅ チェック関数（どこからでも呼び出せるように）
+async def check_restriction(itx: discord.Interaction):
     from features.command_restrict_panel import check_command_allowed
     return await check_command_allowed(itx)
 
@@ -159,16 +159,7 @@ async def on_ready():
     
     print("\n🔄 コマンド登録中...")
     
-    # ✅ 登録用ラッパー関数：自動でチェックを挟む
-    def wrap_command(callback):
-        async def wrapped(itx, *args, **kwargs):
-            if not await pre_check_command(itx):
-                return
-            return await callback(itx, *args, **kwargs)
-        return wrapped
-    
-    # 各setup内で自動的に使われるようにtreeにラップ機能を仕込む
-    # 既存のsetup関数には手を入れずに済むよう、登録後にcallbackを差し替え
+    # ✅ 登録後に個別callbackをラップする方式（clear_commands不使用）
     await lottery_setup(tree)
     print("  ✅ lottery_panel")
     await login_bonus_setup(tree)
@@ -210,19 +201,22 @@ async def on_ready():
     await ranking_panel.setup(tree)
     print("  ✅ ranking_panel")
     
-    # ✅ 登録済みコマンドを再登録方式でラップ（callback直接代入なし）
-    all_cmds = tree.get_commands()
-    tree.clear_commands()
+    # ✅ 登録済みコマンドを1個ずつ上書き登録
+    original_commands = tree.get_commands()
     
-    for cmd in all_cmds:
-        orig_cb = cmd.callback
-        @tree.command(name=cmd.name, description=cmd.description)
-        async def wrapped_cmd(itx, *args, _cb=orig_cb, **kwargs):
-            if not await pre_check_command(itx):
+    for cmd in original_commands:
+        original_callback = cmd.callback
+        
+        # チェックを挟んだ新しいcallback
+        async def wrapped_callback(itx, *args, _cb=original_callback, **kwargs):
+            if not await check_restriction(itx):
                 return
             await _cb(itx, *args, **kwargs)
-        # パラメータ情報復元
-        wrapped_cmd._params = cmd.parameters
+        
+        # コマンドを再登録（上書き）
+        @tree.command(name=cmd.name, description=cmd.description)
+        async def new_command(itx, *args, _wrap=wrapped_callback, **kwargs):
+            await _wrap(itx, *args, **kwargs)
     
     print("✅ 全コマンド制限チェック 自動設定完了")
     
