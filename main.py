@@ -16,19 +16,19 @@ import features.moderation_panel as moderation_panel
 import features.security_panel as security_panel
 import features.invite_link as invite_link
 import features.backup_panel as backup_panel
+import features.command_list_panel as command_list_panel  # ✅ 追加
 import features.othello as othello
 import features.othello_panel as othello_panel
 import features.auth_panel as auth_panel
 import features.role_panel as role_panel
 import features.revoke_panel as revoke_panel
 import features.call_panel as call_panel
-import features.welcome_leave as welcome_leave  # ✅ 読み込み済み
+import features.welcome_leave as welcome_leave
 import features.voice_channel_panel as voice_panel
 import features.ranking_panel as ranking_panel
 
 # ✅ タイムゾーン：日本標準時
 JST = timezone(timedelta(hours=9))
-
 # ✅ 通知先チャンネル（固定）
 STATUS_LOG_CHANNEL_ID = 1559119439981449256
 REASON_FILE = ".last_stop_reason"
@@ -43,13 +43,12 @@ init_db()
 
 intents = discord.Intents.default()
 intents.message_content = True
-intents.members = True  # ✅ 入退室監視に必要
+intents.members = True
 bot = discord.Client(intents=intents)
 tree = app_commands.CommandTree(bot)
 
 # ========== 共通：ステータス通知送信 ==========
 def get_jst_now():
-    """現在時刻を日本標準時で取得"""
     return datetime.now(JST)
 
 async def send_status_embed(title: str, description: str, color: int):
@@ -117,6 +116,7 @@ async def on_ready():
         )
         from features.invite_link import InvitePanelView, InviteDurationView
         from features.backup_panel import BackupPanelView
+        from features.command_list_panel import CommandListView  # ✅ 追加
 
         bot.add_view(LotteryPanelView())
         bot.add_view(PointCheckPanelView())
@@ -135,6 +135,7 @@ async def on_ready():
         bot.add_view(InvitePanelView())
         bot.add_view(InviteDurationView())
         bot.add_view(BackupPanelView())
+        bot.add_view(CommandListView())  # ✅ 追加
         bot.add_view(othello_panel.OthelloPanelView())
         bot.add_view(call_panel.CallPanelView(bot))
         bot.add_view(auth_panel.AuthPanelView())
@@ -171,13 +172,15 @@ async def on_ready():
     print("  ✅ invite_link")
     await backup_panel.setup(tree)
     print("  ✅ backup_panel")
+    await command_list_panel.setup(tree)  # ✅ 追加
+    print("  ✅ command_list_panel コマンド一覧")
     await othello.setup(tree)
     await othello_panel.setup(tree)
     await auth_panel.setup(tree)
     await role_panel.setup(tree)
     await revoke_panel.setup(tree)
     await call_panel.setup(tree, bot)
-    await welcome_leave.setup(bot)  # ✅ 追加！入退室ログ起動
+    await welcome_leave.setup(bot)
     print("  ✅ welcome_leave 入退室ログ")
     await voice_panel.setup(tree)
     print("  ✅ voice_channel_panel")
@@ -199,7 +202,7 @@ async def on_ready():
     asyncio.create_task(ranking_panel.auto_update_task(bot))
     print("✅ ランキング自動更新タスク起動完了")
 
-    # ✅ 起動通知：ここがポイント！
+    # ✅ 起動通知
     if last_reason == "restart_button":
         await send_status_embed(
             title="✅ 再起動完了",
@@ -207,7 +210,6 @@ async def on_ready():
             color=0xF39C12
         )
     else:
-        # それ以外は全部「更新」扱い
         await send_status_embed(
             title="🔄 機能追加又は.py更新により再起動",
             description="機能追加又は.py更新により再起動が実行されました。\n入退室ログを監視中…",
@@ -220,10 +222,8 @@ async def on_ready():
 # ========== 切断/停止時イベント ==========
 @bot.event
 async def on_close():
-    # 既に理由が記録されている → そのまま
     if os.path.exists(REASON_FILE):
         return
-    # それ以外の停止は全部「更新」として記録
     set_reason("update")
 
 bot.run(BOT_TOKEN)
