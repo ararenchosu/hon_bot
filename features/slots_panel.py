@@ -11,7 +11,6 @@ DATA_FILE = "kn_points_data.json"
 SLOT_RESULT_CHANNEL_ID = 1558766953114370158
 
 SYMBOLS = ["🍒", "🍋", "🔔", "💎", "7️⃣"]
-
 # ✅ 元の数字をそれぞれ15倍に
 PAYOUT = {
     ("💎", "💎", "💎"): 10 * 15,   # 10倍 → 150倍
@@ -126,9 +125,14 @@ class SlotGameView(discord.ui.View):
 
 class SlotPanelView(discord.ui.View):
     def __init__(self):
-        super().__init__(timeout=None)
+        super().__init__(timeout=None)  # ✅ 永続化
 
-    @discord.ui.button(label="🔍 途中のゲーム", style=discord.ButtonStyle.secondary, custom_id="slot:resume", row=0)
+    @discord.ui.button(
+        label="🔍 途中のゲーム",
+        style=discord.ButtonStyle.secondary,
+        custom_id="slot:resume",
+        row=0
+    )
     async def resume_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
         g = games.get(itx.user.id)
         if not g:
@@ -141,7 +145,12 @@ class SlotPanelView(discord.ui.View):
         )
         await itx.response.send_message(embed=embed, view=g, ephemeral=True)
 
-    @discord.ui.button(label="💳 ポイント確認", style=discord.ButtonStyle.success, custom_id="slot:check_points", row=1)
+    @discord.ui.button(
+        label="💳 ポイント確認",
+        style=discord.ButtonStyle.success,
+        custom_id="slot:check_points",
+        row=1
+    )
     async def check_points_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
         pts = get_points(itx.user.id)
         await itx.response.send_message(
@@ -149,7 +158,12 @@ class SlotPanelView(discord.ui.View):
             ephemeral=True
         )
 
-    @discord.ui.button(label="🍀 お試し", style=discord.ButtonStyle.secondary, custom_id="slot:free", row=2)
+    @discord.ui.button(
+        label="🍀 お試し",
+        style=discord.ButtonStyle.secondary,
+        custom_id="slot:free",
+        row=2
+    )
     async def free_slot(self, itx: discord.Interaction, btn: discord.ui.Button):
         reels = spin_slot()
         result_text = "🍀 お試し回転！"
@@ -159,19 +173,39 @@ class SlotPanelView(discord.ui.View):
         )
         await send_result_embed(itx.client, itx.user, reels, result_text, 0, get_points(itx.user.id), 0)
 
-    @discord.ui.button(label="🎰 1P スロット", style=discord.ButtonStyle.primary, custom_id="slot:bet1", row=3)
+    @discord.ui.button(
+        label="🎰 1P スロット",
+        style=discord.ButtonStyle.primary,
+        custom_id="slot:bet1",
+        row=3
+    )
     async def bet1_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
         await start_game(itx, 1)
 
-    @discord.ui.button(label="🎰 10P スロット", style=discord.ButtonStyle.primary, custom_id="slot:bet10", row=3)
+    @discord.ui.button(
+        label="🎰 10P スロット",
+        style=discord.ButtonStyle.primary,
+        custom_id="slot:bet10",
+        row=3
+    )
     async def bet10_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
         await start_game(itx, 10)
 
-    @discord.ui.button(label="🎰 50P スロット", style=discord.ButtonStyle.primary, custom_id="slot:bet50", row=4)
+    @discord.ui.button(
+        label="🎰 50P スロット",
+        style=discord.ButtonStyle.primary,
+        custom_id="slot:bet50",
+        row=4
+    )
     async def bet50_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
         await start_game(itx, 50)
 
-    @discord.ui.button(label="🎰 100P スロット", style=discord.ButtonStyle.danger, custom_id="slot:bet100", row=4)
+    @discord.ui.button(
+        label="🎰 100P スロット",
+        style=discord.ButtonStyle.danger,
+        custom_id="slot:bet100",
+        row=4
+    )
     async def bet100_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
         await start_game(itx, 100)
 
@@ -200,7 +234,13 @@ async def start_game(itx, bet):
     )
     await itx.response.send_message(embed=embed, view=view, ephemeral=True)
 
-async def setup(tree: app_commands.CommandTree):
+# ✅ botを受け取って永続View登録
+async def setup(tree: app_commands.CommandTree, bot=None):
+    if bot is not None and not hasattr(bot, "_slots_panel_registered"):
+        bot.add_view(SlotPanelView())
+        bot._slots_panel_registered = True
+        print("✅ slots_panel 永続View登録完了")
+
     @tree.command(name="スロットパネル設置", description="スロットパネルを設置（オーナー専用）")
     async def cmd(itx):
         if not is_owner(itx):
