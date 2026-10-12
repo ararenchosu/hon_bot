@@ -5,7 +5,6 @@ import shutil
 from datetime import datetime
 from core.common import is_owner
 
-# ✅ 固定：通知先チャンネル
 STATUS_LOG_CHANNEL_ID = 1559119439981449256
 REASON_FILE = ".last_stop_reason"
 
@@ -16,23 +15,20 @@ POINT_FILE = "kn_points_data.json"
 
 os.makedirs(BACKUP_DIR, exist_ok=True)
 
-# ========== 共通：停止理由の管理 ==========
+# ========== 共通：停止理由管理 ==========
 def set_reason(reason: str):
-    """停止理由を記録"""
     with open(REASON_FILE, "w", encoding="utf-8") as f:
         f.write(reason)
 
 def clear_reason_file():
-    """理由ファイルを削除"""
     if os.path.exists(REASON_FILE):
         try:
             os.remove(REASON_FILE)
         except:
             pass
 
-# ========== 共通：ステータス通知送信 ==========
+# ========== 共通：通知送信 ==========
 async def send_status_embed(client, title: str, description: str, color: int):
-    """ステータスチャンネルに通知を送る"""
     if not STATUS_LOG_CHANNEL_ID:
         return
     try:
@@ -52,7 +48,6 @@ def get_latest_backup():
     return backups[0] if backups else None
 
 def create_backup():
-    # 古いバックアップを削除
     for old_name in os.listdir(BACKUP_DIR):
         old_path = os.path.join(BACKUP_DIR, old_name)
         try:
@@ -63,7 +58,6 @@ def create_backup():
         except Exception as e:
             print(f"⚠️ 古いバックアップ削除: {e}")
     
-    # 新しいバックアップを作成
     now = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup_path = os.path.join(BACKUP_DIR, f"backup_{now}")
     os.makedirs(backup_path, exist_ok=True)
@@ -175,7 +169,7 @@ class BackupPanelView(discord.ui.View):
             "🔄 Botを再起動します...\n5秒後に自動的に復帰します ✅",
             ephemeral=True
         )
-        # ✅ 再起動：理由を記録
+        # ✅ 再起動ボタン：専用フラグ
         set_reason("restart_button")
         await send_status_embed(
             itx.client,
@@ -224,7 +218,7 @@ class ShutdownConfirmView(discord.ui.View):
             content="🛑 Botを停止しました\n手動で再起動してください ✨",
             view=None
         )
-        # ✅ 完全停止：理由を残さない
+        # ✅ 停止ボタン：フラグ削除 → 次回起動時は更新扱い
         clear_reason_file()
         await send_status_embed(
             itx.client,
