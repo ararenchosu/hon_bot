@@ -4,12 +4,30 @@ from core.common import is_owner
 from core.database import get_connection
 
 # ========== パネル保存/読み込み ==========
+def init_role_give_table():
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS role_give_panel (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            channel_id TEXT NOT NULL,
+            message_id TEXT NOT NULL UNIQUE,
+            title TEXT NOT NULL,
+            description TEXT NOT NULL,
+            color INTEGER NOT NULL,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.commit()
+    conn.close()
+
 def save_role_give_panel(channel_id: int, message_id: int, title: str, description: str, color: int):
     conn = get_connection()
     cur = conn.cursor()
     cur.execute("""
-        INSERT OR REPLACE INTO role_give_panel (channel_id, message_id, title, description, color)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT OR REPLACE INTO role_give_panel 
+        (channel_id, message_id, title, description, color, updated_at)
+        VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     """, (str(channel_id), str(message_id), title, description, color))
     conn.commit()
     conn.close()
@@ -38,10 +56,8 @@ def get_latest_role_give_panel():
 
 # ========== 重複データ一括整理 ==========
 def cleanup_duplicate_roles():
-    """重複しているロールを整理（古い1件を残して他を削除）"""
     conn = get_connection()
     cur = conn.cursor()
-    # 重複を検出
     cur.execute("""
         SELECT guild_id, role_id, COUNT(*) as cnt
         FROM select_roles
@@ -52,7 +68,6 @@ def cleanup_duplicate_roles():
     
     removed_count = 0
     for guild_id, role_id, cnt in duplicates:
-        # 最も古いid以外を削除
         cur.execute("""
             DELETE FROM select_roles
             WHERE guild_id = ? AND role_id = ? AND id NOT IN (
@@ -72,7 +87,6 @@ def get_selectable_roles(guild_id):
     cur.execute("SELECT role_id, role_name FROM select_roles WHERE guild_id=?", (str(guild_id),))
     result = cur.fetchall()
     conn.close()
-    # 念のため重複除外
     seen = {}
     for rid, name in result:
         if rid not in seen:
@@ -82,7 +96,6 @@ def get_selectable_roles(guild_id):
 def add_selectable_role(guild_id, role_id, role_name):
     conn = get_connection()
     cur = conn.cursor()
-    # 存在チェック
     cur.execute(
         "SELECT id FROM select_roles WHERE guild_id=? AND role_id=?",
         (str(guild_id), str(role_id))
@@ -90,8 +103,7 @@ def add_selectable_role(guild_id, role_id, role_name):
     existing = cur.fetchone()
     if existing:
         conn.close()
-        return "duplicate"  # 重複あり
-    # 新規追加
+        return "duplicate"
     cur.execute(
         "INSERT INTO select_roles VALUES (NULL, ?, ?, ?)",
         (str(guild_id), str(role_id), role_name)
@@ -191,7 +203,9 @@ class RoleSelectPanelView(discord.ui.View):
             return
         latest = get_latest_role_give_panel()
         default_title = latest["title"] if latest else "🎖️ ロール選択"
-        default_desc = latest["description"] if latest else "ボタンから必要なロールを選択して取得してください。"
+        default_desc = latest["description"] if latest else (
+            "ボタンから必要なロールを選択して取得してください。"
+        )
         class EditModal(discord.ui.Modal, title="ロールパネル編集"):
             title_in = discord.ui.TextInput(label="タイトル", default=default_title)
             desc_in = discord.ui.TextInput(
@@ -200,7 +214,9 @@ class RoleSelectPanelView(discord.ui.View):
             )
             async def on_submit(self, inter: discord.Interaction):
                 embed = discord.Embed(
-                    title=str(self.title_in), description=str(self.desc_in), color=0x3498db
+                    title=str(self.title_in),
+                    description=str(self.desc_in),
+                    color=0x3498db
                 )
                 await inter.response.edit_message(embed=embed, view=RoleSelectPanelView())
                 save_role_give_panel(
@@ -225,11 +241,9 @@ class RoleSelectPanelView(discord.ui.View):
             async def interaction_check(self, inter: discord.Interaction) -> bool:
                 role = self.children[0].values[0]
                 result = add_selectable_role(inter.guild_id, role.id, role.name)
-                
                 if result == "duplicate":
                     await inter.response.send_message(
-                        f"⚠️ 重複したものを登録したため削除します…\n"
-                        f"「{role.name}」は既に登録されています。重複して登録したものを削除しました。",
+                        f"⚠️ 「{role.name}」は既に登録されています。重複したものを削除しました。",
                         ephemeral=True
                     )
                 else:
@@ -250,8 +264,7 @@ class RoleSelectPanelView(discord.ui.View):
         removed = cleanup_duplicate_roles()
         if removed > 0:
             await itx.response.send_message(
-                f"✅ 重複して登録したものを削除しました…\n"
-                f"計 {removed} 件の重複データを整理しました。",
+                f"✅ 重複データを整理しました。計 {removed} 件を削除しました。",
                 ephemeral=True
             )
         else:
@@ -260,20 +273,38 @@ class RoleSelectPanelView(discord.ui.View):
                 ephemeral=True
             )
 
+    # ✅ 追加：パネル更新ボタン
+    @discord.ui.button(label="🔄 パネル更新", style=discord.ButtonStyle.secondary, custom_id="rpanel:refresh", row=2)
+    async def refresh_panel(self, itx: discord.Interaction, btn: discord.ui.Button):
+        if not is_owner(itx):
+            await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
+            return
+        latest = get_latest_role_give_panel()
+        if not latest:
+            await itx.response.send_message("⚠️ 保存されたパネルが見つかりません", ephemeral=True)
+            return
+        embed = discord.Embed(
+            title=latest["title"],
+            description=latest["description"],
+            color=latest["color"]
+        )
+        await itx.response.edit_message(embed=embed)
+        await itx.followup.send("✅ パネルを最新に更新しました", ephemeral=True)
+
+
 async def setup(tree):
+    init_role_give_table()  # 初回起動時にテーブル作成
     @tree.command(name="ロール付与パネル設置", description="選択式ロールパネル設置（オーナー専用）")
     async def cmd_role_panel(itx: discord.Interaction):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用コマンドです", ephemeral=True)
             return
-        # 初回設置時に重複整理
         cleanup_duplicate_roles()
         
         embed = discord.Embed(
             title="🎖️ ロール選択",
             description="""⬇️のボタンを押して、必要なロールを選択して取得してください。
 誤ったロールを付けた際はロール剥奪でロールを外すことができます。
-
 🎖️ ロールを選択して取得 → ユーザーがロール取得
 🗑️ 選択候補から削除 → オーナー専用：パネルからロール自体を削除
 ➕ 付与ロール追加 → オーナー専用：新しいロールを候補に追加
