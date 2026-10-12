@@ -6,9 +6,13 @@ import shutil
 import sys
 from datetime import datetime
 
-BACKUP_DIR = "/data/backups"
-DB_PATH = "/data/kn_server.db"
+# ✅ core/database.py と完全に同じパスに合わせる
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DB_DIR = os.path.join(BASE_DIR, "..", "data")
+DB_PATH = os.path.join(DB_DIR, "kn_server.db")
+BACKUP_DIR = os.path.join(DB_DIR, "backups")
 
+# フォルダが無ければ作成
 os.makedirs(BACKUP_DIR, exist_ok=True)
 
 
@@ -29,6 +33,16 @@ class BackupPanelView(discord.ui.View):
         await itx.response.defer(ephemeral=True)
 
         try:
+            # ✅ DBファイル存在確認
+            if not os.path.exists(DB_PATH):
+                await itx.followup.send(
+                    f"❌ データベースが見つかりません\n"
+                    f"探した場所：`{DB_PATH}`\n"
+                    f"先にBotを起動して `init_db()` を実行してください",
+                    ephemeral=True
+                )
+                return
+
             # 古いバックアップを全削除
             for f in os.listdir(BACKUP_DIR):
                 if f.endswith(".db"):
@@ -59,6 +73,7 @@ class BackupPanelView(discord.ui.View):
                 title="✅ バックアップ完了",
                 description=f"ファイル名：`backup_{timestamp}.db`\n"
                             f"サイズ：{size_kb:.1f} KB\n"
+                            f"保存先：`{backup_file}`\n"
                             f"古いバックアップは削除しました（最新1件を保持）\n"
                             f"{'✅ DMにファイルを送信しました' if dm_success else '⚠️ DM送信に失敗しましたがサーバーに保存済み'}",
                 color=0x2ECC71
@@ -140,7 +155,6 @@ class RestoreConfirmView(discord.ui.View):
             # 最新バックアップから復元
             shutil.copy2(self.backup_path, DB_PATH)
 
-            # ✅ 復元完了 → 再起動ボタンを表示
             done_embed = discord.Embed(
                 title="✅ 復元完了！",
                 description=f"📂 復元元：`{self.filename}`\n"
@@ -178,16 +192,16 @@ class RestartView(discord.ui.View):
         await itx.response.send_message(
             "🔄 Botを停止します。\n"
             "自動再起動設定が有効な場合、数秒後に復帰します ✅\n"
-            "復帰したらパネルの表示が切り替わっていることを確認してください！",
+            "復帰したら各パネルの「🔄 パネル更新」ボタンで表示を最新にしてください！",
             ephemeral=True
         )
-        sys.exit(0)  # ホスト側で自動再起動される
+        sys.exit(0)
 
 
 async def setup(tree: app_commands.CommandTree):
     bot = tree.client
     bot.add_view(BackupPanelView())
-    bot.add_view(RestartView())  # ✅ 再起動ボタン登録
+    bot.add_view(RestartView())
 
     @tree.command(
         name="バックアップパネル",
