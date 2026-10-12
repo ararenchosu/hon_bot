@@ -244,8 +244,12 @@ class RoleSelectPanelView(discord.ui.View):
         class RolePickerView(discord.ui.View):
             def __init__(self):
                 super().__init__(timeout=None)
+                self.add_item(
+                    discord.ui.RoleSelect(  # ✅ 修正：RoleSelect に変更
+                        placeholder="追加するロールを選択"
+                    )
+                )
 
-            @discord.ui.role_select(placeholder="追加するロールを選択")
             async def role_selected(self, inter: discord.Interaction, role: discord.Role):
                 result = add_selectable_role(inter.guild_id, role.id, role.name)
                 if result == "duplicate":
