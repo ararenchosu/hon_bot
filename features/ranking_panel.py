@@ -108,7 +108,11 @@ class RankingPanelView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)  # ✅ 永久有効
 
-    @discord.ui.button(label="✏️ 内容編集", style=discord.ButtonStyle.secondary, custom_id="ranking:edit")
+    @discord.ui.button(
+        label="✏️ 内容編集",
+        style=discord.ButtonStyle.secondary,
+        custom_id="ranking:edit"
+    )
     async def edit_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
@@ -117,7 +121,7 @@ class RankingPanelView(discord.ui.View):
         if not panel_data:
             await itx.response.send_message("❌ 先にパネルを設置してください", ephemeral=True)
             return
-
+        
         class RankingEditModal(discord.ui.Modal, title="ランキングパネル編集"):
             title_in = discord.ui.TextInput(
                 label="パネルタイトル",
@@ -139,10 +143,14 @@ class RankingPanelView(discord.ui.View):
                     await m_itx.response.send_message("✅ 更新・保存完了", ephemeral=True)
                 except Exception as e:
                     await m_itx.response.send_message(f"❌ 更新に失敗: {e}", ephemeral=True)
-
+        
         await itx.response.send_modal(RankingEditModal())
 
-    @discord.ui.button(label="🔄 今すぐ更新", style=discord.ButtonStyle.primary, custom_id="ranking:refresh")
+    @discord.ui.button(
+        label="🔄 今すぐ更新",
+        style=discord.ButtonStyle.primary,
+        custom_id="ranking:refresh"
+    )
     async def refresh_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
         panel_data = get_panel(itx.channel_id)
         if not panel_data:
@@ -166,14 +174,14 @@ async def auto_update_task(client: discord.Client):
             target += timedelta(days=1)
         wait = (target - datetime.now(JST)).total_seconds()
         await asyncio.sleep(wait)
-
+        
         from core.database import get_connection
         conn = get_connection()
         cur = conn.cursor()
         cur.execute(f"SELECT channel_id, message_id, title, description FROM {PANEL_TABLE}")
         panels = cur.fetchall()
         conn.close()
-
+        
         for ch_id, msg_id, title, desc in panels:
             try:
                 channel = client.get_channel(int(ch_id))
@@ -184,7 +192,7 @@ async def auto_update_task(client: discord.Client):
                 await msg.edit(embed=embed)
             except Exception as e:
                 print(f"⚠️ ランキング自動更新エラー: {e}")
-
+        
         await asyncio.sleep(60)
 
 # ========== セットアップ ==========
@@ -196,17 +204,24 @@ async def setup_panel(channel):
     msg = await channel.send(embed=embed, view=view)
     save_panel(channel.id, msg.id, title, desc)
 
-async def setup(tree: app_commands.CommandTree):
+# ✅ 引数をbot=Noneに統一
+async def setup(tree: app_commands.CommandTree, bot=None):
     init_db()
-    bot = tree.client
-    bot.add_view(RankingPanelView())  # ✅ 永久登録
-
-    # ✅ 自動更新タスク起動（重複防止）
-    if not hasattr(bot, "_ranking_task_started"):
+    
+    if bot is not None and not hasattr(bot, "_ranking_views_registered"):
+        bot.add_view(RankingPanelView())
+        bot._ranking_views_registered = True
+        print("✅ ranking_panel 永続View登録完了")
+    
+    if bot is not None and not hasattr(bot, "_ranking_task_started"):
         bot._ranking_task_started = True
-        bot.loop.create_task(auto_update_task(bot))
-
-    @tree.command(name="ポイントランキングパネル設置", description="ポイントランキングパネルを設置（オーナー専用）")
+        asyncio.create_task(auto_update_task(bot))
+        print("✅ ranking_panel 自動更新タスク起動完了")
+    
+    @tree.command(
+        name="ポイントランキングパネル設置",
+        description="ポイントランキングパネルを設置（オーナー専用）"
+    )
     async def cmd(itx: discord.Interaction):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用コマンドです", ephemeral=True)
