@@ -18,7 +18,6 @@ os.makedirs(BACKUP_DIR, exist_ok=True)
 
 # ========== 自動バックアップ実行時間 ==========
 BACKUP_HOURS = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24]
-
 auto_backup_task = None
 
 def set_reason(reason: str):
@@ -178,10 +177,9 @@ class BackupPanelView(discord.ui.View):
         if not await self.check_owner(itx):
             return
         path = create_backup("手動")
-        # ✅ パネル自体を更新 → ファイル名が即時反映
+        # ✅ 埋め込みだけ更新、Viewはそのまま維持
         await itx.response.edit_message(
-            embed=get_panel_embed(),
-            view=self
+            embed=get_panel_embed()
         )
         await itx.followup.send(
             f"✅ バックアップを保存\n📁 `{path}`\n✅ 古いバックアップは削除済み",
@@ -194,7 +192,6 @@ class BackupPanelView(discord.ui.View):
             color=0x3498DB
         )
 
-    # ✅ 新規追加：情報更新ボタン
     @discord.ui.button(
         label="🔄 情報を更新",
         style=discord.ButtonStyle.secondary,
@@ -203,10 +200,9 @@ class BackupPanelView(discord.ui.View):
     async def refresh_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
         if not await self.check_owner(itx):
             return
-        # 最新のファイル名に更新
+        # ✅ 埋め込みだけ更新
         await itx.response.edit_message(
-            embed=get_panel_embed(),
-            view=self
+            embed=get_panel_embed()
         )
         await itx.followup.send(
             "✅ 情報を更新しました",
@@ -248,11 +244,11 @@ class BackupPanelView(discord.ui.View):
                 "❌ 復元可能なバックアップがありません", ephemeral=True
             )
             return
-        confirm_view = RestoreConfirmView(latest)
+        # ✅ 動的にインスタンス生成（永続登録済みなのでcustom_idは固定）
         await itx.response.send_message(
             f"⚠️ バックアップから復元しますか？\n`{latest}`\n"
             "※ 現在のデータは上書きされます",
-            view=confirm_view,
+            view=RestoreConfirmView(latest),
             ephemeral=True
         )
 
@@ -339,13 +335,15 @@ class RestoreConfirmView(discord.ui.View):
 async def setup(tree: app_commands.CommandTree):
     bot = tree.client
     
+    # ✅ 重複登録を防止
     if not hasattr(bot, "_backup_panel_registered"):
         bot.add_view(BackupPanelView())
-        bot.add_view(RestoreConfirmView(""))
+        # RestoreConfirmViewはインスタンス引数なしで登録（custom_idだけ紐付け）
+        bot.add_view(RestoreConfirmView("__persistent__"))
         bot._backup_panel_registered = True
     
     start_auto_backup(bot)
-
+    
     @tree.command(name="バックアップパネル", description="バックアップ管理パネルを表示")
     async def backup_panel_cmd(itx: discord.Interaction):
         if not is_owner(itx):
