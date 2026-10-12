@@ -16,8 +16,8 @@ POINT_FILE = "kn_points_data.json"
 
 os.makedirs(BACKUP_DIR, exist_ok=True)
 
-# ========== ✅ 自動バックアップ実行時間 ==========
-# 毎日 1時～24時（23時追加）＝ 計24回
+# ========== 自動バックアップ実行時間 ==========
+# 毎日 1時～24時 計24回
 BACKUP_HOURS = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24]
 
 auto_backup_task = None
@@ -59,7 +59,7 @@ def get_latest_backup():
     backups = sorted(os.listdir(BACKUP_DIR), reverse=True)
     return backups[0] if backups else None
 
-# ========== ✅ 最新1件だけ保持：古いものを全削除 ==========
+# ========== 最新1件だけ保持：古いものを全削除 ==========
 def cleanup_old_backups():
     """最新1件以外を削除して容量を節約"""
     if not os.path.exists(BACKUP_DIR):
@@ -69,7 +69,6 @@ def cleanup_old_backups():
         return  # 1件以下なら何もしない
     
     # 最新を除いて全部削除
-    latest_name = backups[0]
     for old_name in backups[1:]:
         old_path = os.path.join(BACKUP_DIR, old_name)
         try:
@@ -82,7 +81,7 @@ def cleanup_old_backups():
             print(f"⚠️ 削除失敗 {old_name}: {e}")
 
 def create_backup(note: str = ""):
-    # ✅ 先に古いものを整理 → 最新1件だけに
+    # 先に古いものを整理 → 最新1件だけに
     cleanup_old_backups()
     
     suffix = f"_{note}" if note else ""
@@ -120,7 +119,6 @@ async def auto_backup_scheduler(client):
     while not client.is_closed():
         now = get_jst_now()
         current_hour = now.hour
-
         # 24時は0時として判定
         effective_hour = 24 if current_hour == 0 else current_hour
 
@@ -169,7 +167,7 @@ class BackupPanelView(discord.ui.View):
             return
         path = create_backup("手動")
         await itx.response.send_message(
-            f"✅ バックアップを保存\n📁 `{path}`\n✅ 古いバックアップは削除済み", 
+            f"✅ バックアップを保存\n📁 `{path}`\n✅ 古いバックアップは削除済み",
             ephemeral=True
         )
         await send_status_embed(
@@ -263,12 +261,13 @@ class BackupPanelView(discord.ui.View):
 
 class RestoreConfirmView(discord.ui.View):
     def __init__(self, backup_name):
-        super().__init__(timeout=None)
+        super().__init__(timeout=None)  # 永続化
         self.backup_name = backup_name
 
     @discord.ui.button(
         label="✅ 復元を実行",
-        style=discord.ButtonStyle.danger
+        style=discord.ButtonStyle.danger,
+        custom_id="backup:restore_confirm"  # ✅ 追加
     )
     async def do_restore(self, itx: discord.Interaction, btn: discord.ui.Button):
         if not is_owner(itx):
@@ -295,7 +294,8 @@ class RestoreConfirmView(discord.ui.View):
 
     @discord.ui.button(
         label="❌ キャンセル",
-        style=discord.ButtonStyle.secondary
+        style=discord.ButtonStyle.secondary,
+        custom_id="backup:restore_cancel"  # ✅ 追加
     )
     async def cancel(self, itx: discord.Interaction, btn: discord.ui.Button):
         await itx.response.edit_message(content="✅ キャンセルしました", view=None)
@@ -306,7 +306,7 @@ async def setup(tree: app_commands.CommandTree):
     # 永続View登録
     if not hasattr(bot, "_backup_panel_registered"):
         bot.add_view(BackupPanelView())
-        bot.add_view(RestoreConfirmView(""))
+        bot.add_view(RestoreConfirmView(""))  # 空で登録してOK
         bot._backup_panel_registered = True
     
     # 定刻バックアップタスク開始
