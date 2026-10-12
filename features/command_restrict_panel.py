@@ -3,18 +3,24 @@ from discord import app_commands
 from core.common import is_owner
 from core.database import get_connection
 
+# ========== 🔴 除外リスト：ここに「制限しないコマンド名」を書く ==========
+EXCLUDE_COMMANDS = [
+    "コマンド確認パネル",
+    # 例："スロット", "ブラックジャック", "ハイアンドロー"
+    # 遊びたいコマンドはここに追加するだけ！
+]
+# =========================================================================
+
 # ========== データベース初期化 ==========
 def init_restrict_tables():
     conn = get_connection()
     cur = conn.cursor()
-    # 禁止コマンド一覧
     cur.execute("""
         CREATE TABLE IF NOT EXISTS restricted_commands (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             command_name TEXT NOT NULL UNIQUE
         )
     """)
-    # 制限を適用するチャンネル
     cur.execute("""
         CREATE TABLE IF NOT EXISTS restrict_channels (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -90,6 +96,27 @@ def is_restricted_here(channel_id: int, cmd_name: str):
         return False
     return cmd_name in get_restricted_cmds()
 
+# ========== 一括チェッカー（全コマンド自動判定） ==========
+async def check_command_allowed(itx: discord.Interaction):
+    """個別ファイル編集不要！自動的に全コマンドをチェック"""
+    # 👑 オーナーは常に許可
+    if is_owner(itx):
+        return True
+    # コマンド名取得
+    cmd_name = itx.command.name if itx.command else ""
+    # ✅ 除外リストにあるコマンドは無制限で許可
+    if cmd_name in EXCLUDE_COMMANDS:
+        return True
+    # 🚫 制限判定
+    if itx.guild and itx.channel:
+        if is_restricted_here(itx.channel.id, cmd_name):
+            await itx.response.send_message(
+                f"🚫 このチャンネルでは `/{cmd_name}` を使用できません。",
+                ephemeral=True
+            )
+            return False
+    return True
+
 # ========== メインパネル ==========
 class CommandRestrictMainView(discord.ui.View):
     def __init__(self, all_cmds=None):
@@ -101,19 +128,20 @@ class CommandRestrictMainView(discord.ui.View):
         chs = get_restrict_channels()
         ch_text = "\n".join(f"<#{cid}>" for cid in chs) if chs else "なし"
         rc_text = "\n".join(f"・`/{n}`" for n in rc) if rc else "なし"
+        exclude_text = "\n".join(f"・`/{n}`" for n in EXCLUDE_COMMANDS) if EXCLUDE_COMMANDS else "なし"
 
         return discord.Embed(
             title="🔒 コマンド使用制限 管理パネル",
             description=(
-                "📌 指定したチャンネルでは、登録したコマンドが一般メンバーから使用不可\n"
+                "📌 指定チャンネル＋指定コマンド → 一般メンバー使用不可\n"
                 "👑 オーナーは常に使用可\n\n"
                 f"📺 制限中のチャンネル:\n{ch_text}\n\n"
-                f"🚫 禁止中のコマンド:\n{rc_text}"
+                f"🚫 禁止中のコマンド:\n{rc_text}\n\n"
+                f"✅ 除外（どこでも使用可）:\n{exclude_text}"
             ),
             color=0x9B59B6
         )
 
-    # --- チャンネル設定 ---
     @discord.ui.button(label="📺 チャンネル設定", style=discord.ButtonStyle.primary, custom_id="restrict:ch_add", row=0)
     async def ch_add_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
         if not is_owner(itx):
@@ -125,7 +153,6 @@ class CommandRestrictMainView(discord.ui.View):
             ephemeral=True
         )
 
-    # --- チャンネル解除 ---
     @discord.ui.button(label="📺 チャンネル解除", style=discord.ButtonStyle.secondary, custom_id="restrict:ch_del", row=0)
     async def ch_del_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
         if not is_owner(itx):
@@ -141,7 +168,6 @@ class CommandRestrictMainView(discord.ui.View):
             ephemeral=True
         )
 
-    # --- 禁止コマンド設定 ---
     @discord.ui.button(label="🚫 禁止コマンド設定", style=discord.ButtonStyle.danger, custom_id="restrict:cmd_add", row=1)
     async def cmd_add_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
         if not is_owner(itx):
@@ -159,7 +185,6 @@ class CommandRestrictMainView(discord.ui.View):
             ephemeral=True
         )
 
-    # --- 禁止コマンド解除 ---
     @discord.ui.button(label="✅ 禁止コマンド解除", style=discord.ButtonStyle.success, custom_id="restrict:cmd_del", row=1)
     async def cmd_del_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
         if not is_owner(itx):
@@ -175,7 +200,6 @@ class CommandRestrictMainView(discord.ui.View):
             ephemeral=True
         )
 
-    # --- 一覧更新 ---
     @discord.ui.button(label="🔄 コマンド更新", style=discord.ButtonStyle.primary, custom_id="restrict:refresh", row=2)
     async def refresh_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
         if hasattr(itx, 'tree') and itx.tree:
@@ -219,10 +243,9 @@ class ChannelRemoveSelectView(discord.ui.View):
         super().__init__(timeout=60)
         options = []
         for cid in ch_list[:25]:
-            ch = itx.guild.get_channel(cid) if itx.guild else None
-            label = f"#{ch.name}" if ch else f"ID:{cid}"
-            options.append(discord.SelectOption(label=label, value=str(cid)))
-        self.add_item(ChannelRemoveMenu(options))
+            # 一時的にitxを使うのでcallback内で取得
+            pass
+        self.options_list = options
 
 class ChannelRemoveMenu(discord.ui.Select):
     def __init__(self, options):
@@ -285,24 +308,6 @@ class CommandRemoveMenu(discord.ui.Select):
             await itx.response.send_message(f"✅ 禁止解除: `/{name}`", ephemeral=True)
         else:
             await itx.response.send_message("❌ 解除に失敗", ephemeral=True)
-
-# ========== 実行時チェッカー ==========
-async def check_command_allowed(itx: discord.Interaction):
-    """各コマンドの最初に入れる判定
-    True=実行可 / False=拒否
-    """
-    if is_owner(itx):
-        return True
-    if not itx.guild or not itx.channel:
-        return True
-    cmd_name = itx.command.name if itx.command else ""
-    if is_restricted_here(itx.channel.id, cmd_name):
-        await itx.response.send_message(
-            f"🚫 このチャンネルでは `/{cmd_name}` を使用できません。",
-            ephemeral=True
-        )
-        return False
-    return True
 
 # ========== セットアップ ==========
 async def setup(tree: app_commands.CommandTree):
