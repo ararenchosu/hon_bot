@@ -101,6 +101,7 @@ def restore_backup(backup_name: str):
     except Exception as e:
         return False, str(e)
 
+# ✅ 定刻バックアップ本体（機能はそのまま有効）
 async def auto_backup_scheduler(client):
     await client.wait_until_ready()
     last_executed_hour = None
@@ -133,15 +134,19 @@ def start_auto_backup(client):
 def get_panel_embed():
     latest = get_latest_backup()
     schedule_str = " / ".join(f"{h}時" for h in BACKUP_HOURS)
+    status = "⏸️ 停止中（手動で開始）"
+    if auto_backup_task and not auto_backup_task.done():
+        status = "✅ 稼働中"
     embed = discord.Embed(
         title="📦 データバックアップ・管理",
         description=(
-            f"⏰ 自動: 毎日 {schedule_str} に実行\n"
-            "💾 最新を永久保存 → 手動保存（古いものは自動削除）\n"
-            "🔄 情報を更新 → 最新ファイル名を再取得\n"
-            "📂 保存状況を確認 → 詳細を表示\n"
+            f"{status}\n"
+            f"⏰ 定刻: 毎日 {schedule_str}\n"
+            "💾 最新を永久保存 → 手動保存\n"
+            "▶️ 定刻監視開始 → 毎日の自動実行をON\n"
+            "⏹️ 定刻監視停止 → 毎日の自動実行をOFF\n"
             "📥 保存分を復元 → 最新の状態に戻す\n"
-            "🔄 Botを再起動 → 停止→待機→再起動"
+            "🔄 Botを再起動 → 停止→再起動"
         ),
         color=0x2ECC71
     )
@@ -175,47 +180,45 @@ class BackupPanelView(discord.ui.View):
         path = create_backup("手動")
         await itx.response.edit_message(embed=get_panel_embed())
         await itx.followup.send(
-            f"✅ バックアップを保存\n📁 `{path}`\n✅ 古いバックアップは削除済み",
+            f"✅ バックアップを保存\n📁 `{path}`",
             ephemeral=True
         )
-        await send_status_embed(
-            itx.client,
-            title="💾 手動バックアップ実行",
-            description=f"オーナーによりバックアップが保存されました。\n`{path}`\n✅ 最新1件のみ保持中",
-            color=0x3498DB
-        )
 
     @discord.ui.button(
-        label="🔄 情報を更新",
-        style=discord.ButtonStyle.secondary,
-        custom_id="backup:refresh"
+        label="▶️ 定刻監視開始",
+        style=discord.ButtonStyle.success,
+        custom_id="backup:start_schedule"
     )
-    async def refresh_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
+    async def start_schedule_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
         if not await self.check_owner(itx):
             return
-        await itx.response.edit_message(embed=get_panel_embed())
-        await itx.followup.send("✅ 情報を更新しました", ephemeral=True)
-
-    @discord.ui.button(
-        label="📂 保存状況を確認",
-        style=discord.ButtonStyle.secondary,
-        custom_id="backup:list"
-    )
-    async def list_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
-        if not await self.check_owner(itx):
-            return
-        latest = get_latest_backup()
-        schedule_str = " / ".join(f"{h}時" for h in BACKUP_HOURS)
-        if not latest:
+        if auto_backup_task and not auto_backup_task.done():
             await itx.response.send_message(
-                f"📋 まだバックアップが保存されていません\n⏰ 実行予定：{schedule_str}",
-                ephemeral=True
+                "✅ 既に定刻監視は稼働中です", ephemeral=True
             )
             return
-        await itx.response.send_message(
-            f"📂 現在保存されているバックアップ:\n- `{latest}`\n✅ 最新1件のみ保持中\n⏰ 実行予定：{schedule_str}",
-            ephemeral=True
-        )
+        start_auto_backup(itx.client)
+        await itx.response.edit_message(embed=get_panel_embed())
+        await itx.followup.send("✅ 定刻バックアップ監視を開始しました", ephemeral=True)
+
+    @discord.ui.button(
+        label="⏹️ 定刻監視停止",
+        style=discord.ButtonStyle.secondary,
+        custom_id="backup:stop_schedule"
+    )
+    async def stop_schedule_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
+        if not await self.check_owner(itx):
+            return
+        global auto_backup_task
+        if auto_backup_task and not auto_backup_task.done():
+            auto_backup_task.cancel()
+            auto_backup_task = None
+            await itx.response.edit_message(embed=get_panel_embed())
+            await itx.followup.send("✅ 定刻監視を停止しました", ephemeral=True)
+        else:
+            await itx.response.send_message(
+                "⚠️ 定刻監視は既に停止しています", ephemeral=True
+            )
 
     @discord.ui.button(
         label="📥 保存分を復元",
@@ -232,7 +235,7 @@ class BackupPanelView(discord.ui.View):
             )
             return
         await itx.response.send_message(
-            f"⚠️ バックアップから復元しますか？\n`{latest}`\n※ 現在のデータは上書きされます",
+            f"⚠️ 復元しますか？\n`{latest}`\n※ 現在のデータは上書き",
             view=RestoreConfirmView(),
             ephemeral=True
         )
@@ -240,41 +243,21 @@ class BackupPanelView(discord.ui.View):
 
     @discord.ui.button(
         label="🔄 Botを再起動",
-        style=discord.ButtonStyle.success,
+        style=discord.ButtonStyle.secondary,
         custom_id="backup:restart"
     )
     async def restart_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
         if not await self.check_owner(itx):
             return
         await itx.response.send_message(
-            "🔄 Botを再起動します…\n停止→5秒経過→再起動開始→完了",
-            ephemeral=True
+            "🔄 Botを再起動します…", ephemeral=True
         )
         set_reason("restart_button")
         await send_status_embed(
-            itx.client,
-            title="🔄 再起動実行",
-            description="オーナーにより再起動が実行されました。\nBotを停止しています…",
-            color=0xF39C12
+            itx.client, "🔄 再起動実行", "オーナーにより再起動されました", 0xF39C12
         )
         await asyncio.sleep(0.5)
-        await send_status_embed(
-            itx.client,
-            title="⏹️ Bot停止",
-            description="自動再起動のためBotを停止しました。\n5秒後に再起動を開始します。",
-            color=0xE74C3C
-        )
-        await asyncio.sleep(5)
-        await send_status_embed(
-            itx.client,
-            title="⏳ 再起動開始",
-            description="5秒が経過しました。\n再起動を開始します…",
-            color=0x9B59B6
-        )
-        async def delayed_exit():
-            await asyncio.sleep(0.5)
-            await itx.client.close()
-        await delayed_exit()
+        await itx.client.close()
 
 class RestoreConfirmView(discord.ui.View):
     def __init__(self):
@@ -287,28 +270,19 @@ class RestoreConfirmView(discord.ui.View):
     )
     async def do_restore(self, itx: discord.Interaction, btn: discord.ui.Button):
         if not is_owner(itx):
-            await itx.response.send_message(
-                "❌ オーナーのみ実行可能です", ephemeral=True
-            )
+            await itx.response.send_message("❌ オーナー専用", ephemeral=True)
             return
         backup_name = getattr(itx.client, "_pending_restore", None)
         if not backup_name:
-            await itx.response.send_message(
-                "❌ 復元するバックアップが見つかりません。もう一度最初から操作してください",
-                ephemeral=True
-            )
+            await itx.response.send_message("❌ 最初から操作してください", ephemeral=True)
             return
         ok, msg = restore_backup(backup_name)
         if ok:
             await itx.response.edit_message(
-                content=f"✅ {msg}\n🔄 続けて「Botを再起動」ボタンを押してください",
-                view=None
+                content=f"✅ {msg}\n🔄 再起動ボタンを押してください", view=None
             )
             await send_status_embed(
-                itx.client,
-                title="📥 復元実行",
-                description=f"オーナーによりバックアップから復元されました。\n`{backup_name}`",
-                color=0x9B59B6
+                itx.client, "📥 復元実行", f"`{backup_name}` から復元", 0x9B59B6
             )
             if hasattr(itx.client, "_pending_restore"):
                 delattr(itx.client, "_pending_restore")
@@ -325,7 +299,6 @@ class RestoreConfirmView(discord.ui.View):
             delattr(itx.client, "_pending_restore")
         await itx.response.edit_message(content="✅ キャンセルしました", view=None)
 
-# ✅ 引数をbot=Noneに統一
 async def setup(tree: app_commands.CommandTree, bot=None):
     if bot is not None and not hasattr(bot, "_backup_views_registered"):
         bot.add_view(BackupPanelView())
@@ -333,15 +306,14 @@ async def setup(tree: app_commands.CommandTree, bot=None):
         bot._backup_views_registered = True
         print("✅ backup_panel 永続View登録完了")
     
-    if bot is not None:
-        start_auto_backup(bot)
+    # ✅ 再起動時は自動開始しない → パネルから手動で開始
+    # if bot is not None:
+    #     start_auto_backup(bot)
     
     @tree.command(name="バックアップパネル", description="バックアップ管理パネルを表示")
     async def backup_panel_cmd(itx: discord.Interaction):
         if not is_owner(itx):
-            await itx.response.send_message(
-                "❌ オーナーのみ実行可能です", ephemeral=True
-            )
+            await itx.response.send_message("❌ オーナーのみ", ephemeral=True)
             return
         await itx.response.send_message(
             embed=get_panel_embed(),
