@@ -6,13 +6,9 @@ import asyncio
 from datetime import datetime, timedelta, timezone
 from core.common import is_owner
 
-# ✅ タイムゾーン：日本標準時
 JST = timezone(timedelta(hours=9))
-
-# ✅ 正しいログ先に統一！
 STATUS_LOG_CHANNEL_ID = 1559119439981449256
 REASON_FILE = ".last_stop_reason"
-
 BACKUP_DIR = "data_backup"
 DATA_DIR = "data"
 DB_FILE = "kn_server.db"
@@ -20,7 +16,12 @@ POINT_FILE = "kn_points_data.json"
 
 os.makedirs(BACKUP_DIR, exist_ok=True)
 
-# ========== 停止理由管理 ==========
+# ========== ✅ 自動バックアップ実行時間 ==========
+# 毎日 1時～24時（23時追加）＝ 計24回
+BACKUP_HOURS = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24]
+
+auto_backup_task = None
+
 def set_reason(reason: str):
     with open(REASON_FILE, "w", encoding="utf-8") as f:
         f.write(reason)
@@ -32,7 +33,6 @@ def clear_reason_file():
         except:
             pass
 
-# ========== 共通：通知送信 ==========
 def get_jst_now():
     return datetime.now(JST)
 
@@ -54,22 +54,40 @@ async def send_status_embed(client, title: str, description: str, color: int):
         print(f"⚠️ 通知送信エラー: {e}")
 
 def get_latest_backup():
+    if not os.path.exists(BACKUP_DIR):
+        return None
     backups = sorted(os.listdir(BACKUP_DIR), reverse=True)
     return backups[0] if backups else None
 
-def create_backup():
-    for old_name in os.listdir(BACKUP_DIR):
+# ========== ✅ 最新1件だけ保持：古いものを全削除 ==========
+def cleanup_old_backups():
+    """最新1件以外を削除して容量を節約"""
+    if not os.path.exists(BACKUP_DIR):
+        return
+    backups = sorted(os.listdir(BACKUP_DIR), reverse=True)
+    if len(backups) <= 1:
+        return  # 1件以下なら何もしない
+    
+    # 最新を除いて全部削除
+    latest_name = backups[0]
+    for old_name in backups[1:]:
         old_path = os.path.join(BACKUP_DIR, old_name)
         try:
             if os.path.isdir(old_path):
                 shutil.rmtree(old_path)
             else:
                 os.remove(old_path)
+            print(f"🗑️ 古いバックアップ削除: {old_name}")
         except Exception as e:
-            print(f"⚠️ 古いバックアップ削除: {e}")
+            print(f"⚠️ 削除失敗 {old_name}: {e}")
+
+def create_backup(note: str = ""):
+    # ✅ 先に古いものを整理 → 最新1件だけに
+    cleanup_old_backups()
     
-    now = datetime.now().strftime("%Y%m%d_%H%M%S")
-    backup_path = os.path.join(BACKUP_DIR, f"backup_{now}")
+    suffix = f"_{note}" if note else ""
+    now = datetime.now(JST).strftime("%Y%m%d_%H%M%S")
+    backup_path = os.path.join(BACKUP_DIR, f"backup_{now}{suffix}")
     os.makedirs(backup_path, exist_ok=True)
     
     if os.path.exists(os.path.join(DATA_DIR, DB_FILE)):
@@ -94,6 +112,41 @@ def restore_backup(backup_name: str):
     except Exception as e:
         return False, str(e)
 
+# ========== 定刻実行スケジューラ ==========
+async def auto_backup_scheduler(client):
+    await client.wait_until_ready()
+    last_executed_hour = None
+
+    while not client.is_closed():
+        now = get_jst_now()
+        current_hour = now.hour
+
+        # 24時は0時として判定
+        effective_hour = 24 if current_hour == 0 else current_hour
+
+        if effective_hour in BACKUP_HOURS and last_executed_hour != effective_hour:
+            try:
+                path = create_backup("定刻")
+                print(f"✅ 定刻バックアップ実行: {now.strftime('%H時')} → {path}")
+                await send_status_embed(
+                    client,
+                    title=f"⏰ 定刻バックアップ（{now.strftime('%H時')}）",
+                    description=f"スケジュールされた時間にバックアップを実行しました。\n📁 `{path}`\n✅ 最新1件のみ保持中",
+                    color=0x3498DB
+                )
+                last_executed_hour = effective_hour
+            except Exception as e:
+                print(f"⚠️ 定刻バックアップエラー: {e}")
+
+        await asyncio.sleep(30)
+
+def start_auto_backup(client):
+    global auto_backup_task
+    if auto_backup_task is None or auto_backup_task.done():
+        auto_backup_task = asyncio.create_task(auto_backup_scheduler(client))
+        schedule_str = ", ".join(f"{h}時" for h in BACKUP_HOURS)
+        print(f"✅ 定刻バックアップ開始（毎日 {schedule_str}）")
+
 class BackupPanelView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -114,15 +167,15 @@ class BackupPanelView(discord.ui.View):
     async def backup_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
         if not await self.check_owner(itx):
             return
-        path = create_backup()
+        path = create_backup("手動")
         await itx.response.send_message(
-            f"✅ 最新バックアップを保存（前回分は上書き）\n📁 `{path}`", 
+            f"✅ バックアップを保存\n📁 `{path}`\n✅ 古いバックアップは削除済み", 
             ephemeral=True
         )
         await send_status_embed(
             itx.client,
-            title="💾 バックアップ実行",
-            description=f"オーナーによりバックアップが保存されました。\n`{path}`",
+            title="💾 手動バックアップ実行",
+            description=f"オーナーによりバックアップが保存されました。\n`{path}`\n✅ 最新1件のみ保持中",
             color=0x3498DB
         )
 
@@ -135,13 +188,15 @@ class BackupPanelView(discord.ui.View):
         if not await self.check_owner(itx):
             return
         latest = get_latest_backup()
+        schedule_str = " / ".join(f"{h}時" for h in BACKUP_HOURS)
         if not latest:
             await itx.response.send_message(
-                "📋 まだバックアップが保存されていません", ephemeral=True
+                f"📋 まだバックアップが保存されていません\n⏰ 実行予定：{schedule_str}",
+                ephemeral=True
             )
             return
         await itx.response.send_message(
-            f"📂 現在保存されているバックアップ:\n- `{latest}`\n✅ 最新1件が永久保存中",
+            f"📂 現在保存されているバックアップ:\n- `{latest}`\n✅ 最新1件のみ保持中\n⏰ 実行予定：{schedule_str}",
             ephemeral=True
         )
 
@@ -161,7 +216,7 @@ class BackupPanelView(discord.ui.View):
             return
         confirm_view = RestoreConfirmView(latest)
         await itx.response.send_message(
-            f"⚠️ 保存中のバックアップから復元しますか？\n`{latest}`\n"
+            f"⚠️ バックアップから復元しますか？\n`{latest}`\n"
             "※ 現在のデータは上書きされます",
             view=confirm_view,
             ephemeral=True
@@ -176,39 +231,31 @@ class BackupPanelView(discord.ui.View):
         if not await self.check_owner(itx):
             return
         await itx.response.send_message(
-            "🔄 Botを再起動します…\n停止→5秒経過→再起動開始→完了 の順に実行します ✅",
+            "🔄 Botを再起動します…\n停止→5秒経過→再起動開始→完了",
             ephemeral=True
         )
         set_reason("restart_button")
         
-        # ① 再起動実行ログ
         await send_status_embed(
             itx.client,
             title="🔄 再起動実行",
             description="オーナーにより再起動が実行されました。\nBotを停止しています…",
             color=0xF39C12
         )
-        
         await asyncio.sleep(0.5)
-        
-        # ② 停止ログ
         await send_status_embed(
             itx.client,
             title="⏹️ Bot停止",
             description="自動再起動のためBotを停止しました。\n5秒後に再起動を開始します。",
             color=0xE74C3C
         )
-        
         await asyncio.sleep(5)
-        
-        # ③ 再起動開始ログ
         await send_status_embed(
             itx.client,
             title="⏳ 再起動開始",
             description="5秒が経過しました。\n再起動を開始します…",
             color=0x9B59B6
         )
-        
         async def delayed_exit():
             await asyncio.sleep(0.5)
             await itx.client.close()
@@ -254,6 +301,17 @@ class RestoreConfirmView(discord.ui.View):
         await itx.response.edit_message(content="✅ キャンセルしました", view=None)
 
 async def setup(tree: app_commands.CommandTree):
+    bot = tree.client
+    
+    # 永続View登録
+    if not hasattr(bot, "_backup_panel_registered"):
+        bot.add_view(BackupPanelView())
+        bot.add_view(RestoreConfirmView(""))
+        bot._backup_panel_registered = True
+    
+    # 定刻バックアップタスク開始
+    start_auto_backup(bot)
+
     @tree.command(name="バックアップパネル", description="バックアップ管理パネルを表示")
     async def backup_panel_cmd(itx: discord.Interaction):
         if not is_owner(itx):
@@ -261,20 +319,22 @@ async def setup(tree: app_commands.CommandTree):
                 "❌ オーナーのみ実行可能です", ephemeral=True
             )
             return
+        latest = get_latest_backup()
+        schedule_str = " / ".join(f"{h}時" for h in BACKUP_HOURS)
         embed = discord.Embed(
             title="📦 データバックアップ・管理",
             description=(
-                "💾 最新を永久保存 → 最新の状態を1件保存（前回分は上書き）\n"
-                "📂 保存状況を確認 → 現在保存されているデータを表示\n"
-                "📥 保存分を復元 → 保存した最新の状態に戻す\n"
-                "🔄 Botを再起動 → 停止→5秒経過→再起動開始→完了"
+                f"⏰ 自動: 毎日 {schedule_str} に実行\n"
+                "💾 最新を永久保存 → 手動保存（古いものは自動削除）\n"
+                "📂 保存状況を確認 → 最新1件を表示\n"
+                "📥 保存分を復元 → 最新の状態に戻す\n"
+                "🔄 Botを再起動 → 停止→待機→再起動"
             ),
             color=0x2ECC71
         )
-        latest = get_latest_backup()
         embed.add_field(
-            name="📋 保存中",
-            value=f"`{latest}`\n✅ 最新1件が保持中" if latest else "なし",
+            name="📋 最新（1件保持）",
+            value=f"`{latest}`" if latest else "なし",
             inline=False
         )
         await itx.response.send_message(embed=embed, view=BackupPanelView())
