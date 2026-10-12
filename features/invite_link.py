@@ -6,30 +6,41 @@ import io
 
 
 class InviteDurationView(discord.ui.View):
+    # ✅ timeout=None に変更 + 各ボタンにcustom_id追加
     def __init__(self):
-        super().__init__(timeout=120)
+        super().__init__(timeout=None)
 
-    @discord.ui.button(label="♾️ 永久", style=discord.ButtonStyle.success)
+    @discord.ui.button(
+        label="♾️ 永久",
+        style=discord.ButtonStyle.success,
+        custom_id="invite:duration_forever"
+    )
     async def forever(self, itx: discord.Interaction, btn: discord.ui.Button):
         await self._generate(itx, max_age=0)
 
-    @discord.ui.button(label="⏱️ 24時間", style=discord.ButtonStyle.primary)
+    @discord.ui.button(
+        label="⏱️ 24時間",
+        style=discord.ButtonStyle.primary,
+        custom_id="invite:duration_24h"
+    )
     async def day1(self, itx: discord.Interaction, btn: discord.ui.Button):
         await self._generate(itx, max_age=86400)
 
-    @discord.ui.button(label="📅 7日", style=discord.ButtonStyle.primary)
+    @discord.ui.button(
+        label="📅 7日",
+        style=discord.ButtonStyle.primary,
+        custom_id="invite:duration_7d"
+    )
     async def day7(self, itx: discord.Interaction, btn: discord.ui.Button):
         await self._generate(itx, max_age=604800)
 
     async def _generate(self, itx: discord.Interaction, max_age: int):
-        # 招待リンク作成
         invite = await itx.channel.create_invite(
             max_age=max_age,
             max_uses=0,
             unique=True
         )
 
-        # 期限表示
         if max_age == 0:
             expiry_text = "永久"
         elif max_age == 86400:
@@ -37,14 +48,14 @@ class InviteDurationView(discord.ui.View):
         else:
             expiry_text = "7日"
 
-        # ✅ QRコード生成
+        # QRコード生成
         qr_img = qrcode.make(invite.url)
         buffer = io.BytesIO()
         qr_img.save(buffer, format="PNG")
         buffer.seek(0)
         qr_file = discord.File(fp=buffer, filename="invite_qr.png")
 
-        # DMに送信
+        # DM送信
         dm_success = False
         try:
             await itx.user.send(
@@ -56,13 +67,11 @@ class InviteDurationView(discord.ui.View):
             dm_success = True
         except Exception as e:
             print(f"DM送信エラー: {e}")
-            pass
 
-        # 結果表示
         if dm_success:
-            message = f"✅ 招待リンク＋QRコードをDMに送信しました！\n🔗 {invite.url}"
+            message = "✅ 招待リンク＋QRコードをDMに送信しました！\n🔗 " + invite.url
         else:
-            message = f"⚠️ DMに送信できませんでした。こちらがリンクです👇\n🔗 {invite.url}"
+            message = "⚠️ DMに送信できませんでした。こちらがリンクです👇\n🔗 " + invite.url
 
         await itx.response.edit_message(content=message, view=None)
 
