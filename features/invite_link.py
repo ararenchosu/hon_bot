@@ -1,8 +1,10 @@
 import discord
 from discord import app_commands
 from core.common import is_owner
+import qrcode
+import io
 
-# ========== 招待リンク生成ビュー ==========
+
 class InviteDurationView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=120)
@@ -20,14 +22,14 @@ class InviteDurationView(discord.ui.View):
         await self._generate(itx, max_age=604800)
 
     async def _generate(self, itx: discord.Interaction, max_age: int):
-        # パネルを押したチャンネルにリンクを作成
+        # 招待リンク作成
         invite = await itx.channel.create_invite(
             max_age=max_age,
             max_uses=0,
             unique=True
         )
 
-        # 表示用の期限テキスト
+        # 期限表示
         if max_age == 0:
             expiry_text = "永久"
         elif max_age == 86400:
@@ -35,21 +37,30 @@ class InviteDurationView(discord.ui.View):
         else:
             expiry_text = "7日"
 
+        # ✅ QRコード生成
+        qr_img = qrcode.make(invite.url)
+        buffer = io.BytesIO()
+        qr_img.save(buffer, format="PNG")
+        buffer.seek(0)
+        qr_file = discord.File(fp=buffer, filename="invite_qr.png")
+
         # DMに送信
         dm_success = False
         try:
             await itx.user.send(
                 f"✅ サーバー招待リンク\n"
                 f"🔗 {invite.url}\n"
-                f"⏳ 有効期限：{expiry_text}"
+                f"⏳ 有効期限：{expiry_text}",
+                file=qr_file
             )
             dm_success = True
-        except:
+        except Exception as e:
+            print(f"DM送信エラー: {e}")
             pass
 
         # 結果表示
         if dm_success:
-            message = f"✅ 招待リンクをDMに送信しました！\n🔗 {invite.url}"
+            message = f"✅ 招待リンク＋QRコードをDMに送信しました！\n🔗 {invite.url}"
         else:
             message = f"⚠️ DMに送信できませんでした。こちらがリンクです👇\n🔗 {invite.url}"
 
@@ -77,10 +88,8 @@ class InvitePanelView(discord.ui.View):
         )
 
 
-# ========== セットアップ ==========
 async def setup(tree: app_commands.CommandTree):
     bot = tree.client
-    # 永続View登録
     bot.add_view(InvitePanelView())
     bot.add_view(InviteDurationView())
 
@@ -93,7 +102,7 @@ async def setup(tree: app_commands.CommandTree):
         embed = discord.Embed(
             title="🔗 招待リンク生成",
             description="下のボタンを押して招待リンクを作成できます\n"
-                        "作成されたリンクはDMに送信されます\n"
+                        "✅ リンク＋QRコードがDMに送信されます\n"
                         "※ サーバー側にログは残りません",
             color=0x3498DB
         )
