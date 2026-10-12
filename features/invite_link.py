@@ -6,22 +6,30 @@ import io
 
 ALLOWED_MEMBER_ROLE = "鯖メン"
 
-# ✅ ボタン使用可：オーナー または 鯖メン
-def is_owner_or_member(user: discord.Member) -> bool:
-    if is_owner(user):
+# ✅ 引数を統一：interaction を受け取る
+def is_owner_or_member(itx: discord.Interaction) -> bool:
+    """オーナー または 鯖メン ならTrue"""
+    if is_owner(itx):
         return True
+    user = itx.user
+    if not isinstance(user, discord.Member):
+        return False
     return any(role.name == ALLOWED_MEMBER_ROLE for role in user.roles)
 
-# ✅ 鯖メンのみ（オーナーは除く）
-def is_regular_member(user: discord.Member) -> bool:
-    return not is_owner(user) and any(role.name == ALLOWED_MEMBER_ROLE for role in user.roles)
+def is_regular_member(itx: discord.Interaction) -> bool:
+    """鯖メンだけ（オーナーは除く）"""
+    if is_owner(itx):
+        return False
+    user = itx.user
+    if not isinstance(user, discord.Member):
+        return False
+    return any(role.name == ALLOWED_MEMBER_ROLE for role in user.roles)
 
 class InviteDurationView(discord.ui.View):
     def __init__(self, is_member_mode: bool = False):
         super().__init__(timeout=None)
         self.is_member_mode = is_member_mode
 
-        # 鯖メンの場合 → 24時間ボタンだけ
         if is_member_mode:
             self.add_item(discord.ui.Button(
                 label="⏱️ 24時間",
@@ -30,7 +38,6 @@ class InviteDurationView(discord.ui.View):
             ))
             return
 
-        # オーナーの場合 → 全3種類
         self.add_item(discord.ui.Button(
             label="♾️ 永久",
             style=discord.ButtonStyle.success,
@@ -75,8 +82,8 @@ class InviteDurationView(discord.ui.View):
         custom_id="invite:duration_24h"
     )
     async def day1(self, itx: discord.Interaction, btn: discord.ui.Button):
-        if not is_owner_or_member(itx.user):
-            await itx.response.send_message("❌ この機能は使用できません", ephemeral=True)
+        if not is_owner_or_member(itx):
+            await itx.response.send_message("❌ この機能は「鯖メン」以上のメンバーのみ使用可能です", ephemeral=True)
             return
         await self._generate(itx, max_age=86400)
 
@@ -150,22 +157,20 @@ class InvitePanelView(discord.ui.View):
         custom_id="invite:panel"
     )
     async def create_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
-        if not is_owner_or_member(itx.user):
+        if not is_owner_or_member(itx):
             await itx.response.send_message(
                 "❌ この機能は「鯖メン」以上のメンバーのみ使用可能です",
                 ephemeral=True
             )
             return
 
-        if is_regular_member(itx.user):
-            # 鯖メン → 24時間のみ
+        if is_regular_member(itx):
             await itx.response.send_message(
                 "⏳ 24時間有効なリンクを生成します",
                 view=InviteDurationView(is_member_mode=True),
                 ephemeral=True
             )
         else:
-            # オーナー → 全種類選択可
             await itx.response.send_message(
                 "⏳ リンクの有効期限を選択してください",
                 view=InviteDurationView(is_member_mode=False),
@@ -182,7 +187,6 @@ async def setup(tree: app_commands.CommandTree):
         description="招待リンク生成パネルを表示（オーナー専用）"
     )
     async def invite_panel_cmd(itx: discord.Interaction):
-        # ✅ コマンド実行はオーナーのみ
         if not is_owner(itx):
             await itx.response.send_message(
                 "❌ このコマンドはオーナー専用です",
@@ -208,3 +212,4 @@ async def setup(tree: app_commands.CommandTree):
             inline=False
         )
         await itx.response.send_message(embed=embed, view=InvitePanelView())
+        await itx.followup.send("✅ パネルを表示しました", ephemeral=True)
