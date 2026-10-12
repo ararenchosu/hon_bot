@@ -2,6 +2,7 @@ import discord
 from discord import app_commands
 import os
 import shutil
+import asyncio
 from datetime import datetime, timedelta, timezone
 from core.common import is_owner
 
@@ -32,7 +33,6 @@ def clear_reason_file():
 
 # ========== 共通：通知送信 ==========
 def get_jst_now():
-    """現在時刻を日本標準時で取得"""
     return datetime.now(JST)
 
 async def send_status_embed(client, title: str, description: str, color: int):
@@ -174,78 +174,36 @@ class BackupPanelView(discord.ui.View):
         if not await self.check_owner(itx):
             return
         await itx.response.send_message(
-            "🔄 Botを再起動します...\n5秒後に自動的に復帰します ✅",
+            "🔄 Botを再起動します…\n停止→5秒待機→自動起動を実行します ✅",
             ephemeral=True
         )
-        # ✅ 再起動ボタン：専用フラグ
+        # ✅ フラグ：再起動ボタンから起動されたことを記録
         set_reason("restart_button")
+        
+        # ① 再起動実行ログ
         await send_status_embed(
             itx.client,
             title="🔄 再起動実行",
-            description="オーナーにより再起動が実行されました。\n5秒後に自動復帰します。",
+            description="オーナーにより再起動が実行されました。\nBotを停止しています…",
             color=0xF39C12
         )
-        import asyncio
-        async def delayed_exit():
-            await asyncio.sleep(1)
-            await itx.client.close()
-        await delayed_exit()
-
-    @discord.ui.button(
-        label="🛑 Botを停止",
-        style=discord.ButtonStyle.danger,
-        custom_id="backup:shutdown",
-        row=1
-    )
-    async def shutdown_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
-        if not await self.check_owner(itx):
-            return
-        confirm_view = ShutdownConfirmView()
-        await itx.response.send_message(
-            "⚠️ 本当にBotを停止しますか？\n"
-            "※ 再起動するには手動で起動し直す必要があります",
-            view=confirm_view,
-            ephemeral=True
-        )
-
-class ShutdownConfirmView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-
-    @discord.ui.button(
-        label="✅ 停止を実行",
-        style=discord.ButtonStyle.danger
-    )
-    async def do_shutdown(self, itx: discord.Interaction, btn: discord.ui.Button):
-        if not is_owner(itx):
-            await itx.response.send_message(
-                "❌ オーナーのみ実行可能です", ephemeral=True
-            )
-            return
-        await itx.response.edit_message(
-            content="🛑 Botを停止しました\n手動で再起動してください ✨",
-            view=None
-        )
-        # ✅ 停止ボタン：フラグ削除 → 次回起動時は更新扱い
-        clear_reason_file()
+        
+        # 少し待ってから停止ログを送信
+        await asyncio.sleep(0.5)
+        
+        # ② 停止ログ
         await send_status_embed(
             itx.client,
-            title="🛑 Bot停止",
-            description="オーナーによりBotが停止されました。\n再起動するには手動で起動し直してください。",
+            title="⏹️ Bot停止",
+            description="自動再起動のためBotを停止しました。\n5秒後に自動的に復帰します。",
             color=0xE74C3C
         )
-        import asyncio
-        async def delayed_shutdown():
-            await asyncio.sleep(1)
+        
+        # 5秒待機してからBotを閉じる
+        async def delayed_exit():
+            await asyncio.sleep(5)
             await itx.client.close()
-        await delayed_shutdown()
-
-    @discord.ui.button(
-        label="❌ キャンセル",
-        style=discord.ButtonStyle.secondary
-    )
-    async def cancel(self, itx: discord.Interaction, btn: discord.ui.Button):
-        await itx.response.edit_message(content="✅ 停止をキャンセルしました", view=None)
+        await delayed_exit()
 
 class RestoreConfirmView(discord.ui.View):
     def __init__(self, backup_name):
@@ -300,8 +258,7 @@ async def setup(tree: app_commands.CommandTree):
                 "💾 最新を永久保存 → 最新の状態を1件保存（前回分は上書き）\n"
                 "📂 保存状況を確認 → 現在保存されているデータを表示\n"
                 "📥 保存分を復元 → 保存した最新の状態に戻す\n"
-                "🔄 Botを再起動 → 自動復帰\n"
-                "🛑 Botを停止 → 完全に停止（手動再起動必要）"
+                "🔄 Botを再起動 → 停止→5秒後に自動的に復帰"
             ),
             color=0x2ECC71
         )
