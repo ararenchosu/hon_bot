@@ -3,6 +3,7 @@ from discord import app_commands
 from core.common import is_owner, CALL_CHANNEL_ID
 from core.database import get_connection
 
+# ========== パネル保存/読み込み ==========
 def save_call_panel(channel_id: int, message_id: int, title: str, description: str, color: int):
     conn = get_connection()
     cur = conn.cursor()
@@ -48,6 +49,7 @@ def set_call_message(text):
     cur.execute("REPLACE INTO config VALUES ('call_message', ?)", (text,))
     conn.commit()
     conn.close()
+# ===========================================
 
 class CallPanelView(discord.ui.View):
     def __init__(self, bot):
@@ -89,7 +91,6 @@ class CallPanelView(discord.ui.View):
             def __init__(self, bot):
                 super().__init__()
                 self.bot = bot
-
             async def on_submit(self, inter: discord.Interaction):
                 embed = discord.Embed(
                     title=str(self.title_in),
@@ -119,6 +120,27 @@ class CallPanelView(discord.ui.View):
                 set_call_message(str(self.msg_in))
                 await inter.response.send_message(f"✅ 更新：\n{self.msg_in}", ephemeral=True)
         await itx.response.send_modal(MsgModal())
+
+    # ✅ 追加：パネル更新ボタン
+    @discord.ui.button(label="🔄 パネル更新", style=discord.ButtonStyle.secondary, custom_id="call:refresh")
+    async def refresh_panel(self, itx: discord.Interaction, btn: discord.ui.Button):
+        if not is_owner(itx):
+            await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
+            return
+        
+        latest = get_latest_call_panel()
+        if not latest:
+            await itx.response.send_message("⚠️ 保存されたパネルが見つかりません", ephemeral=True)
+            return
+        
+        embed = discord.Embed(
+            title=latest["title"],
+            description=latest["description"],
+            color=latest["color"]
+        )
+        await itx.response.edit_message(embed=embed)
+        await itx.followup.send("✅ パネルを最新に更新しました", ephemeral=True)
+
 
 async def setup(tree, bot):
     @tree.command(name="呼び出しパネル設置", description="呼び出しパネル設置（オーナー専用）")
