@@ -18,7 +18,7 @@ import features.invite_link as invite_link
 import features.backup_panel as backup_panel
 import features.command_list_panel as command_list_panel
 import features.othello as othello
-import features.othello_panel as othello_panel
+import features.othello_panel as othello_panel  # ✅ トップレベルでimport
 import features.auth_panel as auth_panel
 import features.role_panel as role_panel
 import features.revoke_panel as revoke_panel
@@ -98,7 +98,6 @@ async def on_ready():
     
     # ========== 🔍 永続化チェッカー ==========
     def check_view_no_args(view_class, view_name: str):
-        """引数なしでインスタンス化できるか検証 → 問題あれば警告"""
         try:
             instance = view_class()
             if instance.timeout is not None:
@@ -129,8 +128,6 @@ async def on_ready():
         from features.invite_link import InvitePanelView, InviteDurationView
         from features.backup_panel import BackupPanelView, RestoreConfirmView
         from features.command_list_panel import CommandListView
-        from features import othello_panel, call_panel, auth_panel
-        from features import role_panel, revoke_panel, voice_panel, ranking_panel
         
         views_to_register = [
             (LotteryPanelView, "LotteryPanelView"),
