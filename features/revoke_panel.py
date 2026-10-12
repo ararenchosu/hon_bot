@@ -52,8 +52,8 @@ def get_latest_role_revoke_panel():
             "color": int(r[4])
         }
     return None
-# ===========================================
 
+# ===========================================
 def get_selectable_roles(guild_id):
     conn = get_connection()
     cur = conn.cursor()
@@ -64,7 +64,7 @@ def get_selectable_roles(guild_id):
 
 class RoleRevokePanelView(discord.ui.View):
     def __init__(self):
-        super().__init__(timeout=None)
+        super().__init__(timeout=None)  # ✅ 永久有効
 
     @discord.ui.button(label="🗑️ ロールを選択して外す", style=discord.ButtonStyle.danger, custom_id="revoke:remove")
     async def remove_role(self, itx: discord.Interaction, btn: discord.ui.Button):
@@ -74,6 +74,7 @@ class RoleRevokePanelView(discord.ui.View):
                 "❌ 剥奪可能なロールが設定されていません。", ephemeral=True
             )
             return
+
         user_role_ids = {str(r.id) for r in itx.user.roles}
         removable = [(rid, name) for rid, name in selectable_roles if rid in user_role_ids]
         if not removable:
@@ -81,14 +82,16 @@ class RoleRevokePanelView(discord.ui.View):
                 "✅ 現在剥奪できるロールは付与されていません。", ephemeral=True
             )
             return
+
         class RevokeSelView(discord.ui.View):
             def __init__(self):
-                super().__init__()
+                super().__init__(timeout=None)
                 self.add_item(discord.ui.Select(
                     placeholder="外すロールを選択",
                     max_values=len(removable),
                     options=[discord.SelectOption(label=name, value=rid) for rid, name in removable]
                 ))
+
             async def interaction_check(self, inter: discord.Interaction) -> bool:
                 selected = self.children[0].values
                 removed = []
@@ -106,6 +109,7 @@ class RoleRevokePanelView(discord.ui.View):
                         "❌ 選択されたロールが見つかりませんでした。", ephemeral=True
                     )
                 return True
+
         await itx.response.send_message(
             "外すロールを選択してください：", view=RevokeSelView(), ephemeral=True
         )
@@ -120,6 +124,7 @@ class RoleRevokePanelView(discord.ui.View):
         default_desc = latest["description"] if latest else (
             "ボタンから不要なロールを選択して外すことができます。"
         )
+
         class EditModal(discord.ui.Modal, title="ロール剥奪パネル編集"):
             title_in = discord.ui.TextInput(label="タイトル", default=default_title)
             desc_in = discord.ui.TextInput(
@@ -141,9 +146,9 @@ class RoleRevokePanelView(discord.ui.View):
                     0xe74c3c
                 )
                 await inter.followup.send("✅ 更新・保存完了", ephemeral=True)
+
         await itx.response.send_modal(EditModal())
 
-    # ✅ 追加：パネル更新ボタン
     @discord.ui.button(label="🔄 パネル更新", style=discord.ButtonStyle.secondary, custom_id="revoke:refresh")
     async def refresh_panel(self, itx: discord.Interaction, btn: discord.ui.Button):
         if not is_owner(itx):
@@ -161,9 +166,11 @@ class RoleRevokePanelView(discord.ui.View):
         await itx.response.edit_message(embed=embed)
         await itx.followup.send("✅ パネルを最新に更新しました", ephemeral=True)
 
+async def setup(tree: app_commands.CommandTree):
+    init_role_revoke_table()
+    bot = tree.client
+    bot.add_view(RoleRevokePanelView())  # ✅ 永久登録
 
-async def setup(tree):
-    init_role_revoke_table()  # 初回実行時にテーブル作成
     @tree.command(name="ロール剥奪パネル設置", description="ロール剥奪パネル設置（オーナー専用）")
     async def cmd_revoke_panel(itx: discord.Interaction):
         if not is_owner(itx):
