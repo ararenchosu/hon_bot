@@ -86,11 +86,9 @@ class ActionConfirmModal(discord.ui.Modal):
         if not reason:
             await itx.response.send_message("❌ 理由を入力してください", ephemeral=True)
             return
-
         success = True
         desc = ""
         color = 0x808080
-
         if self.action_type == "⚠️ 警告":
             try:
                 await self.target_user.send(
@@ -103,7 +101,6 @@ class ActionConfirmModal(discord.ui.Modal):
             except Exception as e:
                 desc = f"⚠️ 警告を送信しました（DM配信失敗：{e}）"
                 color = 0xF1C40F
-
         elif self.action_type == "🚪 キック":
             try:
                 await itx.guild.kick(self.target_user, reason=reason)
@@ -112,7 +109,6 @@ class ActionConfirmModal(discord.ui.Modal):
             except Exception as e:
                 success = False
                 desc = f"❌ キック失敗：{e}"
-
         elif self.action_type == "🚫 BAN":
             try:
                 await itx.guild.ban(self.target_user, reason=reason, delete_message_days=0)
@@ -121,14 +117,12 @@ class ActionConfirmModal(discord.ui.Modal):
             except Exception as e:
                 success = False
                 desc = f"❌ BAN失敗：{e}"
-
         if success:
             add_moderation_log(
                 self.target_user.id, str(self.target_user),
                 itx.user.id, str(itx.user),
                 self.action_type, reason
             )
-
         embed = discord.Embed(
             title=self.action_type,
             description=desc,
@@ -138,22 +132,19 @@ class ActionConfirmModal(discord.ui.Modal):
         embed.add_field(name="対象", value=self.target_user.mention, inline=True)
         embed.add_field(name="実行者", value=itx.user.mention, inline=True)
         embed.add_field(name="理由", value=reason, inline=False)
-
         await itx.response.send_message(embed=embed, ephemeral=True)
-
         # ログチャンネル送信
         if MOD_LOG_CHANNEL_ID and success:
             log_ch = itx.client.get_channel(MOD_LOG_CHANNEL_ID)
             if log_ch:
                 await log_ch.send(embed=embed)
 
-# ========== ユーザー選択ビュー（2.3.x対応） ==========
+# ========== ユーザー選択ビュー ==========
 class SelectTargetView(discord.ui.View):
     def __init__(self, action):
         super().__init__(timeout=120)
         self.action = action
         self.selected_user = None
-        # ✅ 装飾子不使用 → __init__内でUserSelectを追加
         self.add_item(
             discord.ui.UserSelect(
                 placeholder="対象ユーザーを選択",
@@ -169,7 +160,6 @@ class SelectTargetView(discord.ui.View):
 
     async def process_selection(self, itx: discord.Interaction):
         target = self.selected_user
-
         if self.action == "history":
             logs = get_moderation_logs(target.id)
             if not logs:
@@ -187,7 +177,6 @@ class SelectTargetView(discord.ui.View):
                 color=0x3498DB
             )
             await itx.response.send_message(embed=embed, ephemeral=True)
-
         elif self.action == "unban":
             try:
                 ban_entry = await itx.guild.fetch_ban(target)
@@ -215,7 +204,7 @@ class ModerationPanelView(discord.ui.View):
         init_moderation_table()
 
     @discord.ui.button(label="⚠️ 警告", style=discord.ButtonStyle.secondary, custom_id="mod:warn", row=0)
-    async def warn_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
+    async def warn_btn(self, itx: discord.Interaction, btn):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用", ephemeral=True)
             return
@@ -226,7 +215,7 @@ class ModerationPanelView(discord.ui.View):
         )
 
     @discord.ui.button(label="🚪 キック", style=discord.ButtonStyle.primary, custom_id="mod:kick", row=0)
-    async def kick_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
+    async def kick_btn(self, itx: discord.Interaction, btn):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用", ephemeral=True)
             return
@@ -237,7 +226,7 @@ class ModerationPanelView(discord.ui.View):
         )
 
     @discord.ui.button(label="🚫 BAN", style=discord.ButtonStyle.danger, custom_id="mod:ban", row=0)
-    async def ban_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
+    async def ban_btn(self, itx: discord.Interaction, btn):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用", ephemeral=True)
             return
@@ -248,7 +237,7 @@ class ModerationPanelView(discord.ui.View):
         )
 
     @discord.ui.button(label="📝 履歴表示", style=discord.ButtonStyle.secondary, custom_id="mod:history", row=1)
-    async def history_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
+    async def history_btn(self, itx: discord.Interaction, btn):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用", ephemeral=True)
             return
@@ -259,7 +248,7 @@ class ModerationPanelView(discord.ui.View):
         )
 
     @discord.ui.button(label="✅ BAN解除", style=discord.ButtonStyle.success, custom_id="mod:unban", row=1)
-    async def unban_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
+    async def unban_btn(self, itx: discord.Interaction, btn):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用", ephemeral=True)
             return
@@ -269,10 +258,13 @@ class ModerationPanelView(discord.ui.View):
             ephemeral=True
         )
 
-async def setup(tree: app_commands.CommandTree):
+# ✅ 引数統一
+async def setup(tree: app_commands.CommandTree, bot=None):
     init_moderation_table()
-    bot = tree.client
-    bot.add_view(ModerationPanelView())  # ✅ 永久登録
+    if bot is not None and not hasattr(bot, "_moderation_views_registered"):
+        bot.add_view(ModerationPanelView())
+        bot._moderation_views_registered = True
+        print("✅ moderation_panel 永続View登録完了")
 
     @tree.command(name="管理パネル設置", description="メンバー管理パネル設置（オーナー専用）")
     @app_commands.check(is_owner)
