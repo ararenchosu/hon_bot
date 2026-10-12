@@ -14,7 +14,7 @@ import features.clear_messages as clear_messages
 import features.moderation_panel as moderation_panel
 import features.security_panel as security_panel
 import features.invite_link as invite_link
-import features.backup_panel as backup_panel  # ✅ バックアップ追加
+import features.backup_panel as backup_panel
 import features.othello as othello
 import features.othello_panel as othello_panel
 import features.auth_panel as auth_panel
@@ -39,28 +39,12 @@ intents.members = True
 bot = discord.Client(intents=intents)
 tree = app_commands.CommandTree(bot)
 
-
-async def restore_panel(channel_id, message_id, ViewClass, *view_args):
-    try:
-        channel = bot.get_channel(channel_id)
-        if not channel:
-            print(f"⚠️ チャンネルが見つかりません: {channel_id}")
-            return False
-        msg = await channel.fetch_message(message_id)
-        await msg.edit(view=ViewClass(*view_args))
-        return True
-    except Exception as e:
-        print(f"⚠️ 復元失敗: {e}")
-        return False
-
-
 # ========== 監視イベント ==========
 @bot.event
 async def on_message(message):
     if message.guild and not message.author.bot:
         await security_panel.check_forbidden_words(message)
         await security_panel.check_link_restriction(message)
-
 
 # ========== 起動処理 ==========
 @bot.event
@@ -81,7 +65,7 @@ async def on_ready():
             EmergencyLockView, EmergencyUnlockView
         )
         from features.invite_link import InvitePanelView, InviteDurationView
-        from features.backup_panel import BackupPanelView  # ✅ バックアップ
+        from features.backup_panel import BackupPanelView, RestartView
 
         bot.add_view(LotteryPanelView())
         bot.add_view(PointCheckPanelView())
@@ -99,7 +83,8 @@ async def on_ready():
         bot.add_view(EmergencyUnlockView())
         bot.add_view(InvitePanelView())
         bot.add_view(InviteDurationView())
-        bot.add_view(BackupPanelView())  # ✅ バックアップ登録
+        bot.add_view(BackupPanelView())
+        bot.add_view(RestartView())
         bot.add_view(othello_panel.OthelloPanelView())
         bot.add_view(call_panel.CallPanelView(bot))
         bot.add_view(auth_panel.AuthPanelView())
@@ -134,7 +119,7 @@ async def on_ready():
     print("  ✅ security_panel")
     await invite_link.setup(tree)
     print("  ✅ invite_link → /招待リンクパネル")
-    await backup_panel.setup(tree)  # ✅ バックアップコマンド
+    await backup_panel.setup(tree)
     print("  ✅ backup_panel → /バックアップパネル")
     await othello.setup(tree)
     await othello_panel.setup(tree)
@@ -163,20 +148,7 @@ async def on_ready():
     asyncio.create_task(ranking_panel.auto_update_task(bot))
     print("✅ ランキング自動更新タスク起動完了")
 
-    print("\n🔄 パネル復元中...")
-    call_saved = call_panel.get_latest_call_panel()
-    if call_saved:
-        await restore_panel(call_saved["channel_id"], call_saved["message_id"], call_panel.CallPanelView, bot)
-    auth_saved = auth_panel.get_latest_auth_panel()
-    if auth_saved:
-        await restore_panel(auth_saved["channel_id"], auth_saved["message_id"], auth_panel.AuthPanelView)
-    role_give_saved = role_panel.get_latest_role_give_panel()
-    if role_give_saved:
-        await restore_panel(role_give_saved["channel_id"], role_give_saved["message_id"], role_panel.RoleSelectPanelView)
-    role_revoke_saved = revoke_panel.get_latest_role_revoke_panel()
-    if role_revoke_saved:
-        await restore_panel(role_revoke_saved["channel_id"], role_revoke_saved["message_id"], revoke_panel.RoleRevokePanelView)
-    print("✅ 起動完了\n")
+    print("\n✅ 起動完了\n")
 
 
 bot.run(BOT_TOKEN)
