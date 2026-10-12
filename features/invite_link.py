@@ -56,20 +56,25 @@ class InviteDurationView(discord.ui.View):
         buffer.seek(0)
         qr_file = discord.File(fp=buffer, filename="qrcode.png")
 
-        # Embed作成
+        # ✅ 埋め込み：リンクをコピーしやすい形で表示
         embed = discord.Embed(
             title="🔗 サーバー招待リンク",
-            description="スマホのカメラまたはQRリーダーで読み取ってください\n"
-                        "または下のボタンからリンクを開いてコピーできます",
+            description="👇 下のリンク部分を**1回タップ**または**長押し**でコピー！",
             color=0x2ECC71
         )
-        embed.add_field(name="有効期限", value=expiry_text, inline=False)
+        # コードブロックで囲む → 1クリックで全選択される
+        embed.add_field(
+            name="📋 招待リンク（コピー用）",
+            value=f"```\n{invite.url}\n```",
+            inline=False
+        )
+        embed.add_field(name="⏳ 有効期限", value=expiry_text, inline=True)
         embed.set_image(url="attachment://qrcode.png")
 
-        # ✅ リンクを開くボタン（コピー用）
+        # リンクを開くボタン（補助用）
         dm_view = discord.ui.View()
         dm_view.add_item(discord.ui.Button(
-            label="🔗 リンクを開く・コピーする",
+            label="🔗 ブラウザで開く",
             style=discord.ButtonStyle.link,
             url=invite.url
         ))
@@ -84,11 +89,12 @@ class InviteDurationView(discord.ui.View):
 
         # 結果表示
         if dm_success:
-            message = "✅ 招待リンクをDMに送信しました！\n" \
-                      "DM内の「リンクを開く・コピーする」ボタンからページを開き、\n" \
-                      "アドレスバーからURLをコピーしてください"
+            message = (
+                "✅ 招待リンクをDMに送信しました！\n"
+                "DM内のリンク部分をタップ → コピー または 長押ししてください"
+            )
         else:
-            message = f"⚠️ DMに送信できませんでした。こちらがリンクです👇\n🔗 {invite.url}"
+            message = f"⚠️ DMに送信できませんでした。こちらをコピーしてください👇\n```\n{invite.url}\n```"
 
         await itx.response.edit_message(content=message, view=None)
 
