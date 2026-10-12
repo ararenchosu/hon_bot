@@ -2,9 +2,9 @@ import discord
 from datetime import datetime
 from core.common import JST, WELCOME_LEAVE_CHANNEL_ID
 
-def get_human_member_count(guild: discord.Guild) -> int:
-    """サーバー内のBot以外のユーザー数を返す"""
-    return sum(1 for m in guild.members if not m.bot)
+def get_total_member_count(guild: discord.Guild) -> int:
+    """サーバー内の全メンバー数（Bot含む）を返す"""
+    return len(guild.members)
 
 def make_member_embed(member: discord.Member, is_join: bool = True) -> discord.Embed:
     created_at = member.created_at.astimezone(JST)
@@ -12,10 +12,10 @@ def make_member_embed(member: discord.Member, is_join: bool = True) -> discord.E
     account_age_days = (now - created_at).days
     created_str = created_at.strftime("%Y-%m-%d %H:%M:%S JST")
     
-    # ✅ 現在のBot以外の総人数を取得
-    total_humans = get_human_member_count(member.guild)
+    # ✅ 現在の全メンバー数（Bot含む）を取得
+    total_count = get_total_member_count(member.guild)
     # 参加時は+1、退出時はそのまま表示
-    display_count = total_humans + 1 if is_join else total_humans
+    display_count = total_count + 1 if is_join else total_count
     
     account_type = "🤖 Bot" if member.bot else "👤 ユーザー"
     
@@ -39,9 +39,9 @@ def make_member_embed(member: discord.Member, is_join: bool = True) -> discord.E
     embed.add_field(name="アカウント作成日", value=f"{created_str}\n({age_note})", inline=False)
     embed.add_field(name="作成からの経過", value=f"**{account_age_days}日**", inline=False)
     embed.add_field(name="アカウント種類", value=account_type, inline=False)
-    # ✅ 総ユーザー数に変更
+    # ✅ 総メンバー数（Bot含む）
     embed.add_field(
-        name="👥 サーバー人数",
+        name="👥 サーバー総人数",
         value=f"**{display_count}人**",
         inline=False
     )
@@ -50,16 +50,14 @@ def make_member_embed(member: discord.Member, is_join: bool = True) -> discord.E
     return embed
 
 async def on_member_join(member: discord.Member) -> None:
-    if member.bot:
-        return
+    # ✅ Botの場合も通知を送信
     ch = member.guild.get_channel(WELCOME_LEAVE_CHANNEL_ID)
     if ch:
         embed = make_member_embed(member, is_join=True)
         await ch.send(embed=embed)
 
 async def on_member_remove(member: discord.Member) -> None:
-    if member.bot:
-        return
+    # ✅ Botの場合も通知を送信
     ch = member.guild.get_channel(WELCOME_LEAVE_CHANNEL_ID)
     if ch:
         embed = make_member_embed(member, is_join=False)
@@ -68,4 +66,4 @@ async def on_member_remove(member: discord.Member) -> None:
 async def setup(bot: discord.Client) -> None:
     bot.event(on_member_join)
     bot.event(on_member_remove)
-    print("✅ welcome_leave イベント登録完了（サーバー総人数表示）")
+    print("✅ welcome_leave イベント登録完了（Bot含む総人数表示）")
