@@ -15,7 +15,6 @@ DB_FILE = "kn_server.db"
 POINT_FILE = "kn_points_data.json"
 
 os.makedirs(BACKUP_DIR, exist_ok=True)
-
 BACKUP_HOURS = [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24]
 auto_backup_task = None
 
@@ -153,8 +152,6 @@ def get_panel_embed():
     )
     return embed
 
-# ========== 各Viewを完全分離 ==========
-
 class BackupPanelView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -234,13 +231,11 @@ class BackupPanelView(discord.ui.View):
                 "❌ 復元可能なバックアップがありません", ephemeral=True
             )
             return
-        # 復元確認用Viewを表示
         await itx.response.send_message(
             f"⚠️ バックアップから復元しますか？\n`{latest}`\n※ 現在のデータは上書きされます",
             view=RestoreConfirmView(),
             ephemeral=True
         )
-        # 選択されたバックアップ名を一時的に保持
         itx.client._pending_restore = latest
 
     @discord.ui.button(
@@ -296,7 +291,6 @@ class RestoreConfirmView(discord.ui.View):
                 "❌ オーナーのみ実行可能です", ephemeral=True
             )
             return
-        # 一時的に保持した名前を取得
         backup_name = getattr(itx.client, "_pending_restore", None)
         if not backup_name:
             await itx.response.send_message(
@@ -316,8 +310,8 @@ class RestoreConfirmView(discord.ui.View):
                 description=f"オーナーによりバックアップから復元されました。\n`{backup_name}`",
                 color=0x9B59B6
             )
-            # 一時データ削除
-            delattr(itx.client, "_pending_restore")
+            if hasattr(itx.client, "_pending_restore"):
+                delattr(itx.client, "_pending_restore")
         else:
             await itx.response.edit_message(content=f"❌ 失敗：{msg}", view=None)
 
@@ -331,17 +325,16 @@ class RestoreConfirmView(discord.ui.View):
             delattr(itx.client, "_pending_restore")
         await itx.response.edit_message(content="✅ キャンセルしました", view=None)
 
-async def setup(tree: app_commands.CommandTree):
-    bot = tree.client
-    
-    # ✅ 起動時に必ず登録（二重登録防止）
-    if not hasattr(bot, "_backup_views_registered"):
+# ✅ 引数をbot=Noneに統一
+async def setup(tree: app_commands.CommandTree, bot=None):
+    if bot is not None and not hasattr(bot, "_backup_views_registered"):
         bot.add_view(BackupPanelView())
         bot.add_view(RestoreConfirmView())
         bot._backup_views_registered = True
-        print("✅ バックアップパネル 永続View登録完了")
+        print("✅ backup_panel 永続View登録完了")
     
-    start_auto_backup(bot)
+    if bot is not None:
+        start_auto_backup(bot)
     
     @tree.command(name="バックアップパネル", description="バックアップ管理パネルを表示")
     async def backup_panel_cmd(itx: discord.Interaction):
