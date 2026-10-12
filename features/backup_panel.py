@@ -5,8 +5,9 @@ import shutil
 from datetime import datetime
 from core.common import is_owner
 
-# ✅ ステータス通知用チャンネルID（main.pyと同じIDにする）
-STATUS_LOG_CHANNEL_ID = 1559119439981449256  # ← 自分のチャンネルIDに書き換え
+# ✅ 固定：通知先チャンネル
+STATUS_LOG_CHANNEL_ID = 1559119439981449256
+REASON_FILE = ".last_stop_reason"
 
 BACKUP_DIR = "data_backup"
 DATA_DIR = "data"
@@ -15,10 +16,24 @@ POINT_FILE = "kn_points_data.json"
 
 os.makedirs(BACKUP_DIR, exist_ok=True)
 
+# ========== 共通：停止理由の管理 ==========
+def set_reason(reason: str):
+    """停止理由を記録"""
+    with open(REASON_FILE, "w", encoding="utf-8") as f:
+        f.write(reason)
+
+def clear_reason_file():
+    """理由ファイルを削除"""
+    if os.path.exists(REASON_FILE):
+        try:
+            os.remove(REASON_FILE)
+        except:
+            pass
+
 # ========== 共通：ステータス通知送信 ==========
 async def send_status_embed(client, title: str, description: str, color: int):
     """ステータスチャンネルに通知を送る"""
-    if not STATUS_LOG_CHANNEL_ID or STATUS_LOG_CHANNEL_ID == 123456789012345678:
+    if not STATUS_LOG_CHANNEL_ID:
         return
     try:
         channel = client.get_channel(STATUS_LOG_CHANNEL_ID)
@@ -100,7 +115,6 @@ class BackupPanelView(discord.ui.View):
             f"✅ 最新バックアップを保存（前回分は上書き）\n📁 `{path}`", 
             ephemeral=True
         )
-        # ✅ バックアップ実行通知
         await send_status_embed(
             itx.client,
             title="💾 バックアップ実行",
@@ -161,11 +175,12 @@ class BackupPanelView(discord.ui.View):
             "🔄 Botを再起動します...\n5秒後に自動的に復帰します ✅",
             ephemeral=True
         )
-        # ✅ 再起動実行通知
+        # ✅ 再起動：理由を記録
+        set_reason("restart_button")
         await send_status_embed(
             itx.client,
             title="🔄 再起動実行",
-            description="オーナーにより再起動が実行されました。",
+            description="オーナーにより再起動が実行されました。\n5秒後に自動復帰します。",
             color=0xF39C12
         )
         import asyncio
@@ -206,14 +221,15 @@ class ShutdownConfirmView(discord.ui.View):
             )
             return
         await itx.response.edit_message(
-            content="🛑 Botを停止しました\nお疲れ様でした ✨",
+            content="🛑 Botを停止しました\n手動で再起動してください ✨",
             view=None
         )
-        # ✅ 停止実行通知
+        # ✅ 完全停止：理由を残さない
+        clear_reason_file()
         await send_status_embed(
             itx.client,
             title="🛑 Bot停止",
-            description="オーナーによりBotが停止されました。",
+            description="オーナーによりBotが停止されました。\n再起動するには手動で起動し直してください。",
             color=0xE74C3C
         )
         import asyncio
@@ -250,7 +266,6 @@ class RestoreConfirmView(discord.ui.View):
                 content=f"✅ {msg}\n🔄 続けて「Botを再起動」ボタンを押してください",
                 view=None
             )
-            # ✅ 復元完了通知
             await send_status_embed(
                 itx.client,
                 title="📥 復元実行",
