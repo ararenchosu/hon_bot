@@ -91,18 +91,10 @@ async def on_message(message):
         await security_panel.check_forbidden_words(message)
         await security_panel.check_link_restriction(message)
 
-# ✅ グローバルでコマンド実行を横取りするフック
-original_interaction = tree.interaction
-
-@tree.interaction
-async def handle_interaction(interaction: discord.Interaction):
-    if interaction.type == discord.InteractionType.application_command:
-        from features.command_restrict_panel import check_command_allowed
-        # 実行前にチェック
-        if not await check_command_allowed(interaction):
-            return  # ブロック → 元の処理実行しない
-    # チェックOK → 元の処理へ
-    await original_interaction(interaction)
+# ✅ コマンド実行前チェック用共通関数
+async def pre_check_command(itx: discord.Interaction):
+    from features.command_restrict_panel import check_command_allowed
+    return await check_command_allowed(itx)
 
 @bot.event
 async def on_ready():
@@ -166,6 +158,17 @@ async def on_ready():
         print(f"⚠️ View登録エラー: {e}")
     
     print("\n🔄 コマンド登録中...")
+    
+    # ✅ 登録用ラッパー関数：自動でチェックを挟む
+    def wrap_command(callback):
+        async def wrapped(itx, *args, **kwargs):
+            if not await pre_check_command(itx):
+                return
+            return await callback(itx, *args, **kwargs)
+        return wrapped
+    
+    # 各setup内で自動的に使われるようにtreeにラップ機能を仕込む
+    # 既存のsetup関数には手を入れずに済むよう、登録後にcallbackを差し替え
     await lottery_setup(tree)
     print("  ✅ lottery_panel")
     await login_bonus_setup(tree)
@@ -206,6 +209,20 @@ async def on_ready():
     print("  ✅ voice_channel_panel")
     await ranking_panel.setup(tree)
     print("  ✅ ranking_panel")
+    
+    # ✅ 登録済みコマンドを再登録方式でラップ（callback直接代入なし）
+    all_cmds = tree.get_commands()
+    tree.clear_commands()
+    
+    for cmd in all_cmds:
+        orig_cb = cmd.callback
+        @tree.command(name=cmd.name, description=cmd.description)
+        async def wrapped_cmd(itx, *args, _cb=orig_cb, **kwargs):
+            if not await pre_check_command(itx):
+                return
+            await _cb(itx, *args, **kwargs)
+        # パラメータ情報復元
+        wrapped_cmd._params = cmd.parameters
     
     print("✅ 全コマンド制限チェック 自動設定完了")
     
