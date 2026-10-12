@@ -1,36 +1,33 @@
 import discord
 from discord import app_commands
+from core.common import is_owner
 
 class CommandListView(discord.ui.View):
     def __init__(self):
-        super().__init__(timeout=None)
+        super().__init__(timeout=None)  # ✅ 永久有効
         self.page = 0
         self.items_per_page = 5
         self.all_commands = []
-        self.tree = None  # 後からtreeをセット
+        self.tree = None
 
     def make_embed(self, all_commands=None):
         if all_commands is not None:
             self.all_commands = all_commands
-
         cmd_list = []
         for cmd in self.all_commands:
             cmd_list.append({
                 "name": f"/{cmd.name}",
                 "desc": cmd.description or "説明なし"
             })
-
         total_pages = (len(cmd_list) + self.items_per_page - 1) // self.items_per_page
         start = self.page * self.items_per_page
         end = start + self.items_per_page
         page_items = cmd_list[start:end]
-
         embed = discord.Embed(
             title=f"📋 コマンド一覧  ({self.page+1}/{total_pages}ページ)",
             description=f"登録済み：**{len(cmd_list)}件** ｜ 🔄 更新ボタンで最新になります",
             color=0x3498DB
         )
-
         for info in page_items:
             embed.add_field(
                 name=f"🔹 {info['name']}",
@@ -41,12 +38,14 @@ class CommandListView(discord.ui.View):
                 ),
                 inline=False
             )
-
         embed.set_footer(text=f"最終更新：{discord.utils.utcnow().strftime('%H:%M:%S')} UTC")
         return embed
 
     @discord.ui.button(label="🔄 更新", style=discord.ButtonStyle.success, custom_id="cmdlist:refresh")
     async def refresh_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
+        if not is_owner(itx):
+            await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
+            return
         if not self.tree:
             await itx.response.send_message("⚠️ 読み込み中です。しばらくしてからお試しください。", ephemeral=True)
             return
@@ -56,6 +55,9 @@ class CommandListView(discord.ui.View):
 
     @discord.ui.button(label="◀️ 前へ", style=discord.ButtonStyle.secondary, custom_id="cmdlist:prev")
     async def prev_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
+        if not is_owner(itx):
+            await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
+            return
         if self.page > 0:
             self.page -= 1
             await itx.response.edit_message(embed=self.make_embed(), view=self)
@@ -64,6 +66,9 @@ class CommandListView(discord.ui.View):
 
     @discord.ui.button(label="次へ ▶️", style=discord.ButtonStyle.primary, custom_id="cmdlist:next")
     async def next_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
+        if not is_owner(itx):
+            await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
+            return
         total_pages = (len(self.all_commands) + self.items_per_page - 1) // self.items_per_page
         if self.page < total_pages - 1:
             self.page += 1
@@ -73,16 +78,19 @@ class CommandListView(discord.ui.View):
 
 async def setup(tree: app_commands.CommandTree):
     bot = tree.client
-    # ✅ 起動時にViewを登録＋treeを保持
+    # ✅ 永続View登録
     view_instance = CommandListView()
     view_instance.tree = tree
-    bot.add_view(view_instance)
+    bot.add_view(view_instance)  # ✅ Bot起動時に登録 → 再起動してもボタン有効
 
     @tree.command(
         name="コマンド確認パネル",
-        description="コマンド一覧を表示（更新ボタン付き）"
+        description="コマンド一覧を表示（オーナー専用）"
     )
     async def cmd_list_panel(itx: discord.Interaction):
+        if not is_owner(itx):
+            await itx.response.send_message("❌ オーナー専用コマンドです", ephemeral=True)
+            return
         all_cmds = tree.get_commands()
         view = CommandListView()
         view.tree = tree
