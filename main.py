@@ -30,8 +30,8 @@ import features.ranking_panel as ranking_panel
 JST = timezone(timedelta(hours=9))
 STATUS_LOG_CHANNEL_ID = 1559119439981449256
 REASON_FILE = ".last_stop_reason"
-
 BOT_TOKEN = os.getenv("DISCORD_TOKEN")
+
 if not BOT_TOKEN:
     print("❌ 環境変数 DISCORD_TOKEN が設定されていません")
     exit(1)
@@ -48,7 +48,6 @@ tree = app_commands.CommandTree(bot)
 def get_jst_now():
     return datetime.now(JST)
 
-# ✅ backup_panel と同じ引数形式に統一
 async def send_status_embed(client, title: str, description: str, color: int):
     if not STATUS_LOG_CHANNEL_ID:
         return
@@ -97,6 +96,7 @@ async def on_ready():
     
     last_reason = get_and_clear_reason()
     
+    # ========== 永続View一括登録 ==========
     try:
         from features.lottery_panel import LotteryPanelView, PointCheckPanelView
         from features.login_bonus import LoginBonusPanelView
@@ -111,9 +111,12 @@ async def on_ready():
             EmergencyLockView, EmergencyUnlockView
         )
         from features.invite_link import InvitePanelView, InviteDurationView
-        from features.backup_panel import BackupPanelView
+        from features.backup_panel import BackupPanelView, RestoreConfirmView
         from features.command_list_panel import CommandListView
+        from features import othello_panel, call_panel, auth_panel
+        from features import role_panel, revoke_panel, voice_channel_panel, ranking_panel
         
+        # ✅ 引数なしで登録 → 永続化
         bot.add_view(LotteryPanelView())
         bot.add_view(PointCheckPanelView())
         bot.add_view(LoginBonusPanelView())
@@ -131,98 +134,75 @@ async def on_ready():
         bot.add_view(InvitePanelView())
         bot.add_view(InviteDurationView())
         bot.add_view(BackupPanelView())
+        bot.add_view(RestoreConfirmView())  # ✅ 追加
         
         clv = CommandListView()
         clv.tree = tree
         bot.add_view(clv)
         
+        # ✅ 引数を渡さない（各ファイル内でbot取得するよう修正済み前提）
         bot.add_view(othello_panel.OthelloPanelView())
-        bot.add_view(call_panel.CallPanelView(bot))
+        bot.add_view(call_panel.CallPanelView())
         bot.add_view(auth_panel.AuthPanelView())
         bot.add_view(role_panel.RoleSelectPanelView())
         bot.add_view(revoke_panel.RoleRevokePanelView())
         bot.add_view(voice_panel.VoiceCreatePanelView())
         bot.add_view(ranking_panel.RankingPanelView())
-        print("✅ 全View登録完了")
+        
+        print("✅ 全View永続登録完了")
     except Exception as e:
         print(f"⚠️ View登録エラー: {e}")
+        import traceback
+        traceback.print_exc()
     
+    # ========== コマンド登録 ==========
     print("\n🔄 コマンド登録中...")
-    await lottery_setup(tree)
-    print("  ✅ lottery_panel")
-    await login_bonus_setup(tree)
-    print("  ✅ login_bonus")
-    await slots_setup(tree)
-    print("  ✅ slots_panel")
-    await blackjack_setup(tree)
-    print("  ✅ blackjack_panel")
-    await highlow_setup(tree)
-    print("  ✅ highlow_panel")
-    await point_admin_setup(tree)
-    print("  ✅ point_admin_panel")
-    await embed_sender.setup(tree)
-    print("  ✅ embed_sender")
-    await clear_messages.setup(tree)
-    print("  ✅ clear_messages")
-    await moderation_panel.setup(tree)
-    print("  ✅ moderation_panel")
-    await security_panel.setup(tree)
-    print("  ✅ security_panel")
-    await invite_link.setup(tree)
-    print("  ✅ invite_link")
-    await backup_panel.setup(tree)
-    print("  ✅ backup_panel（自動バックアップタスク起動）")
-    await command_list_panel.setup(tree)
-    print("  ✅ command_list_panel コマンド一覧")
+    await lottery_setup(tree); print("  ✅ lottery_panel")
+    await login_bonus_setup(tree); print("  ✅ login_bonus")
+    await slots_setup(tree); print("  ✅ slots_panel")
+    await blackjack_setup(tree); print("  ✅ blackjack_panel")
+    await highlow_setup(tree); print("  ✅ highlow_panel")
+    await point_admin_setup(tree); print("  ✅ point_admin_panel")
+    await embed_sender.setup(tree); print("  ✅ embed_sender")
+    await clear_messages.setup(tree); print("  ✅ clear_messages")
+    await moderation_panel.setup(tree); print("  ✅ moderation_panel")
+    await security_panel.setup(tree); print("  ✅ security_panel")
+    await invite_link.setup(tree); print("  ✅ invite_link")
+    await backup_panel.setup(tree); print("  ✅ backup_panel")
+    await command_list_panel.setup(tree); print("  ✅ command_list_panel")
     await othello.setup(tree)
-    await othello_panel.setup(tree)
-    await auth_panel.setup(tree)
-    await role_panel.setup(tree)
-    await revoke_panel.setup(tree)
-    await call_panel.setup(tree, bot)
-    await welcome_leave.setup(bot)
-    print("  ✅ welcome_leave 入退室ログ")
-    await voice_panel.setup(tree)
-    print("  ✅ voice_channel_panel")
-    await ranking_panel.setup(tree)
-    print("  ✅ ranking_panel")
+    await othello_panel.setup(tree); print("  ✅ othello_panel")
+    await auth_panel.setup(tree); print("  ✅ auth_panel")
+    await role_panel.setup(tree); print("  ✅ role_panel")
+    await revoke_panel.setup(tree); print("  ✅ revoke_panel")
+    await call_panel.setup(tree); print("  ✅ call_panel")
+    await welcome_leave.setup(bot); print("  ✅ welcome_leave")
+    await voice_panel.setup(tree); print("  ✅ voice_panel")
+    await ranking_panel.setup(tree); print("  ✅ ranking_panel")
     
     print("✅ 全コマンド登録完了")
-    print("\n📋 コマンド一覧：")
-    for cmd in tree.get_commands():
-        print(f"   /{cmd.name}")
     
     print("\n🔄 グローバル同期中...")
     synced = await tree.sync()
     print(f"✅ 同期完了！合計 {len(synced)} 件")
-    for cmd in synced:
-        print(f"   /{cmd.name}")
     
     print("\n🔄 自動更新タスク起動中...")
     asyncio.create_task(ranking_panel.auto_update_task(bot))
     print("✅ ランキング自動更新タスク起動完了")
     
     if last_reason == "restart_button":
-        await send_status_embed(
-            bot,
-            title="✅ 再起動完了",
-            description="ボタン操作により再起動されました。\n入退室ログを監視中…",
-            color=0xF39C12
-        )
+        await send_status_embed(bot, "✅ 再起動完了",
+            "ボタン操作により再起動されました。\n全パネル復旧済みです✨", 0xF39C12)
     else:
-        await send_status_embed(
-            bot,
-            title="🔄 機能追加又は.py更新により再起動",
-            description="機能追加又は.py更新により再起動が実行されました。\n入退室ログを監視中…",
-            color=0x9B59B6
-        )
+        await send_status_embed(bot, "🔄 再起動完了",
+            "機能追加・更新により再起動しました。\n全パネル復旧済みです✨", 0x9B59B6)
+    
     print("✅ 起動通知送信完了")
-    print("\n✅ 起動完了\n")
+    print("\n✅ 起動完了 — 全パネル永続化対応済み\n")
 
 @bot.event
 async def on_close():
-    if os.path.exists(REASON_FILE):
-        return
-    set_reason("update")
+    if not os.path.exists(REASON_FILE):
+        set_reason("update")
 
 bot.run(BOT_TOKEN)
