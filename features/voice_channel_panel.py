@@ -4,15 +4,67 @@ import asyncio
 import random
 from datetime import datetime, timedelta, timezone
 from core.common import is_owner
+from core.database import get_connection
 
 JST = timezone(timedelta(hours=9))
 
-# ✅ 設定
+# ========== 設定 ==========
 CATEGORY_ID = 1558099663922405376          # 一時通話カテゴリ
 LOG_CREATE_DELETE_CHANNEL = 1558734928366141460  # 作成・削除ログ
 LOG_JOIN_LEAVE_CHANNEL = 1558735006103371826     # 入室・退出ログ
 TIMEOUT_NO_JOIN = 120  # 作成後誰も入らないと削除：2分
 TIMEOUT_EMPTY = 5      # 0人になってから削除：5秒
+
+# ========== パネル保存/読み込み ==========
+def init_voice_panel_table():
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        CREATE TABLE IF NOT EXISTS voice_panel (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            channel_id TEXT NOT NULL,
+            message_id TEXT NOT NULL UNIQUE,
+            title TEXT NOT NULL,
+            description TEXT NOT NULL,
+            color INTEGER NOT NULL,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+def save_voice_panel(channel_id: int, message_id: int, title: str, description: str, color: int):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT OR REPLACE INTO voice_panel 
+        (channel_id, message_id, title, description, color, updated_at)
+        VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    """, (str(channel_id), str(message_id), title, description, color))
+    conn.commit()
+    conn.close()
+
+def get_latest_voice_panel():
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        SELECT channel_id, message_id, title, description, color
+        FROM voice_panel
+        ORDER BY updated_at DESC
+        LIMIT 1
+    """)
+    r = cur.fetchone()
+    conn.close()
+    if r:
+        return {
+            "channel_id": int(r[0]),
+            "message_id": int(r[1]),
+            "title": r[2],
+            "description": r[3],
+            "color": int(r[4])
+        }
+    return None
+# ===========================================
 
 # チャンネル管理データ
 active_channels = {}
@@ -176,7 +228,7 @@ async def watch_channel(channel: discord.VoiceChannel):
     last_members = set()
     print(f"👀 監視開始: {channel_name}")
     try:
-        # ===== フェーズ1：作成後2分間、誰も入らなければ削除 =====
+        # フェーズ1：作成後2分間、誰も入らなければ削除
         for _ in range(TIMEOUT_NO_JOIN):
             if channel_id not in active_channels:
                 return
@@ -197,13 +249,11 @@ async def watch_channel(channel: discord.VoiceChannel):
                     "stay_sec": None
                 }
                 await send_join_log(client, channel_name, member, now_ts)
-                # ✅ 読み上げなし
             last_members = current_members
             if len(current_members) > 0:
                 break
             await asyncio.sleep(1)
         else:
-            # 2分間誰も入室なし
             ch = client.get_channel(channel_id)
             if ch:
                 print(f"⏰ 2分経過・誰も入室なし → 削除: {channel_name}")
@@ -211,8 +261,7 @@ async def watch_channel(channel: discord.VoiceChannel):
                 await send_delete_summary_log(client, channel_name, "2分以内に入室がないため", records)
                 await ch.delete(reason="2分以内に入室がないため")
             return
-
-        # ===== フェーズ2：常時監視 =====
+        # フェーズ2：常時監視
         while True:
             if channel_id not in active_channels:
                 return
@@ -233,7 +282,6 @@ async def watch_channel(channel: discord.VoiceChannel):
                     "stay_sec": None
                 }
                 await send_join_log(client, channel_name, member, now_ts)
-                # ✅ 読み上げなし
             # 退出
             for member in last_members - current_members:
                 if member.bot:
@@ -246,7 +294,6 @@ async def watch_channel(channel: discord.VoiceChannel):
                     rec["leave_ts"] = leave_ts
                     rec["stay_sec"] = stay_sec
                     await send_leave_log(client, channel_name, member, leave_ts, stay_sec)
-                    # ✅ 読み上げなし
             last_members = current_members
             # 0人になったら5秒待って削除
             if len(current_members) == 0:
@@ -287,20 +334,25 @@ class VoiceCreatePanelView(discord.ui.View):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
             return
+        latest = get_latest_voice_panel()
+        default_title = latest["title"] if latest else "通話チャンネル作成"
+        default_desc = latest["description"] if latest else (
+            "⬇️のボタンを押すと通話チャンネルが作成できます。作成者の方は2分以内に入室してください。"
+            "誰も入らないと自動削除されます。全員退出後5秒でチャンネル削除になります。"
+        )
         class PanelEditModal(discord.ui.Modal, title="パネル編集"):
             title_in = discord.ui.TextInput(
                 label="パネルタイトル",
-                default="通話チャンネル作成",
+                default=default_title,
                 required=True
             )
             desc_in = discord.ui.TextInput(
                 label="説明文",
-                default="⬇️のボタンを押すと通話チャンネルが作成できます。作成者の方は2分以内に入室してください。誰も入らないと自動削除されます。全員退出後5秒でチャンネル削除になります。",
+                default=default_desc,
                 style=discord.TextStyle.long,
                 required=True
             )
             async def on_submit(self, m_itx: discord.Interaction):
-                await m_itx.response.defer(ephemeral=True)
                 colors = [
                     discord.Color.blue(), discord.Color.green(),
                     discord.Color.gold(), discord.Color.orange(),
@@ -312,9 +364,38 @@ class VoiceCreatePanelView(discord.ui.View):
                     description=str(self.desc_in),
                     color=random.choice(colors)
                 )
-                await m_itx.response.edit_message(embed=embed)
-                await m_itx.followup.send("✅ パネルを更新しました", ephemeral=True)
+                await m_itx.response.edit_message(embed=embed, view=VoiceCreatePanelView())
+                save_voice_panel(
+                    m_itx.channel_id,
+                    m_itx.message.id,
+                    str(self.title_in),
+                    str(self.desc_in),
+                    embed.color.value
+                )
+                await m_itx.followup.send("✅ 更新・保存完了", ephemeral=True)
         await itx.response.send_modal(PanelEditModal())
+
+    # ✅ 追加：パネル更新ボタン
+    @discord.ui.button(
+        label="🔄 パネル更新",
+        style=discord.ButtonStyle.secondary,
+        custom_id="voice:refresh"
+    )
+    async def refresh_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
+        if not is_owner(itx):
+            await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
+            return
+        latest = get_latest_voice_panel()
+        if not latest:
+            await itx.response.send_message("⚠️ 保存されたパネルが見つかりません", ephemeral=True)
+            return
+        embed = discord.Embed(
+            title=latest["title"],
+            description=latest["description"],
+            color=latest["color"]
+        )
+        await itx.response.edit_message(embed=embed)
+        await itx.followup.send("✅ パネルを最新に更新しました", ephemeral=True)
 
 async def setup_panel(channel):
     colors = [
@@ -329,8 +410,17 @@ async def setup_panel(channel):
         color=random.choice(colors)
     )
     await channel.send(embed=embed, view=VoiceCreatePanelView())
+    msg = await channel.fetch_message(channel.last_message_id)
+    save_voice_panel(
+        channel.id,
+        msg.id,
+        embed.title,
+        embed.description,
+        embed.color.value
+    )
 
 async def setup(tree: app_commands.CommandTree):
+    init_voice_panel_table()  # 初回起動時にテーブル作成
     @tree.command(name="通話パネル設置", description="一時通話チャンネル作成パネルを設置（オーナー専用）")
     async def setup_voice_panel(itx: discord.Interaction):
         if not is_owner(itx):
