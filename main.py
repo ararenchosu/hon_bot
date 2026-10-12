@@ -12,7 +12,8 @@ from features.point_admin_panel import setup as point_admin_setup
 import features.embed_sender as embed_sender
 import features.clear_messages as clear_messages
 import features.moderation_panel as moderation_panel
-import features.security_panel as security_panel  # ✅ 治安管理パネル
+import features.security_panel as security_panel
+import features.invite_link as invite_link  # ✅ 招待リンク
 import features.othello as othello
 import features.othello_panel as othello_panel
 import features.auth_panel as auth_panel
@@ -50,16 +51,14 @@ async def restore_panel(channel_id, message_id, ViewClass, *view_args):
         print(f"⚠️ 復元失敗: {e}")
         return False
 
-# ========== ✅ 監視イベント：禁止ワード＋リンク制限 ==========
+# ========== 監視イベント ==========
 @bot.event
 async def on_message(message):
     if message.guild and not message.author.bot:
-        # 禁止ワードチェック
         await security_panel.check_forbidden_words(message)
-        # リンク制限チェック
         await security_panel.check_link_restriction(message)
-# =========================================================
 
+# ========== 起動処理 ==========
 @bot.event
 async def on_ready():
     print(f"\n✅ ログイン：{bot.user}")
@@ -77,6 +76,7 @@ async def on_ready():
             LockChannelView, UnlockChannelView,
             EmergencyLockView, EmergencyUnlockView
         )
+        from features.invite_link import InvitePanelView, InviteDurationView  # ✅ 招待リンク
         
         bot.add_view(LotteryPanelView())
         bot.add_view(PointCheckPanelView())
@@ -92,6 +92,8 @@ async def on_ready():
         bot.add_view(UnlockChannelView())
         bot.add_view(EmergencyLockView())
         bot.add_view(EmergencyUnlockView())
+        bot.add_view(InvitePanelView())       # ✅ 招待リンク
+        bot.add_view(InviteDurationView())    # ✅ 招待リンク
         bot.add_view(othello_panel.OthelloPanelView())
         bot.add_view(call_panel.CallPanelView(bot))
         bot.add_view(auth_panel.AuthPanelView())
@@ -105,25 +107,27 @@ async def on_ready():
     
     print("\n🔄 コマンド登録中...")
     await lottery_setup(tree)
-    print("  ✅ lottery_panel → /くじ引きパネル設置 / /ポイント確認パネル設置")
+    print("  ✅ lottery_panel")
     await login_bonus_setup(tree)
-    print("  ✅ login_bonus → /ログインボーナスパネル設置")
+    print("  ✅ login_bonus")
     await slots_setup(tree)
-    print("  ✅ slots_panel → /スロットパネル設置")
+    print("  ✅ slots_panel")
     await bj_setup(tree)
-    print("  ✅ blackjack_panel → /ブラックジャックパネル設置")
+    print("  ✅ blackjack_panel")
     await hl_setup(tree)
-    print("  ✅ highlow_panel → /ハイローパネル設置")
+    print("  ✅ highlow_panel")
     await point_admin_setup(tree)
-    print("  ✅ point_admin_panel → /ポイント付与パネル設置")
+    print("  ✅ point_admin_panel")
     await embed_sender.setup(tree)
-    print("  ✅ embed_sender → /emb")
+    print("  ✅ embed_sender")
     await clear_messages.setup(tree)
-    print("  ✅ clear_messages → /メッセージ全削除")
+    print("  ✅ clear_messages")
     await moderation_panel.setup(tree)
-    print("  ✅ moderation_panel → /管理パネル設置")
+    print("  ✅ moderation_panel")
     await security_panel.setup(tree)
-    print("  ✅ security_panel → /治安パネル設置")
+    print("  ✅ security_panel")
+    await invite_link.setup(tree)  # ✅ 招待リンク
+    print("  ✅ invite_link → /招待リンクパネル")
     await othello.setup(tree)
     await othello_panel.setup(tree)
     await auth_panel.setup(tree)
@@ -132,16 +136,16 @@ async def on_ready():
     await call_panel.setup(tree, bot)
     await welcome_leave.setup(bot)
     await voice_panel.setup(tree)
-    print("  ✅ voice_channel_panel → /通話パネル設置")
+    print("  ✅ voice_channel_panel")
     await ranking_panel.setup(tree)
-    print("  ✅ ranking_panel → /ポイントランキングパネル設置")
+    print("  ✅ ranking_panel")
     print("✅ 全コマンド登録完了")
     
     print("\n📋 登録済みコマンド一覧：")
     for cmd in tree.get_commands():
         print(f"   /{cmd.name}")
     
-    print("\n🔄 グローバル同期中（反映に時間がかかります）...")
+    print("\n🔄 グローバル同期中...")
     synced = await tree.sync()
     print(f"✅ 同期完了！合計 {len(synced)} 件")
     for cmd in synced:
