@@ -50,7 +50,6 @@ async def on_message(message):
 @bot.event
 async def on_ready():
     print(f"\n✅ ログイン：{bot.user}")
-
     try:
         from features.lottery_panel import LotteryPanelView, PointCheckPanelView
         from features.login_bonus import LoginBonusPanelView
@@ -65,7 +64,7 @@ async def on_ready():
             EmergencyLockView, EmergencyUnlockView
         )
         from features.invite_link import InvitePanelView, InviteDurationView
-        from features.backup_panel import BackupPanelView, RestartView
+        from features.backup_panel import BackupPanelView  # ✅ RestartView 削除
 
         bot.add_view(LotteryPanelView())
         bot.add_view(PointCheckPanelView())
@@ -83,8 +82,7 @@ async def on_ready():
         bot.add_view(EmergencyUnlockView())
         bot.add_view(InvitePanelView())
         bot.add_view(InviteDurationView())
-        bot.add_view(BackupPanelView())
-        bot.add_view(RestartView())
+        bot.add_view(BackupPanelView())  # ✅ これだけ
         bot.add_view(othello_panel.OthelloPanelView())
         bot.add_view(call_panel.CallPanelView(bot))
         bot.add_view(auth_panel.AuthPanelView())
@@ -132,8 +130,8 @@ async def on_ready():
     print("  ✅ voice_channel_panel")
     await ranking_panel.setup(tree)
     print("  ✅ ranking_panel")
-    print("✅ 全コマンド登録完了")
 
+    print("✅ 全コマンド登録完了")
     print("\n📋 登録済みコマンド一覧：")
     for cmd in tree.get_commands():
         print(f"   /{cmd.name}")
@@ -147,8 +145,6 @@ async def on_ready():
     print("\n🔄 自動更新タスク起動中...")
     asyncio.create_task(ranking_panel.auto_update_task(bot))
     print("✅ ランキング自動更新タスク起動完了")
-
     print("\n✅ 起動完了\n")
-
 
 bot.run(BOT_TOKEN)
