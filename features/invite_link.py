@@ -51,27 +51,28 @@ class InviteDurationView(discord.ui.View):
 
         # QRコード生成
         qr_img = qrcode.make(invite.url)
+        qr_img = qr_img.resize((200, 200))  # サイズ調整
         buffer = io.BytesIO()
         qr_img.save(buffer, format="PNG")
         buffer.seek(0)
         qr_file = discord.File(fp=buffer, filename="qrcode.png")
 
-        # ✅ 埋め込み：リンクをコピーしやすい形で表示
+        # ✅ 埋め込み：左にリンク、右にQRコード
         embed = discord.Embed(
             title="🔗 サーバー招待リンク",
-            description="👇 下のリンク部分を**1回タップ**または**長押し**でコピー！",
+            description="👇 リンクをタップまたは長押しでコピー！",
             color=0x2ECC71
         )
-        # コードブロックで囲む → 1クリックで全選択される
         embed.add_field(
-            name="📋 招待リンク（コピー用）",
-            value=f"```\n{invite.url}\n```",
-            inline=False
+            name="📋 招待リンク",
+            value=f"```\n{invite.url}\n```\n⏳ 有効期限：{expiry_text}",
+            inline=True
         )
-        embed.add_field(name="⏳ 有効期限", value=expiry_text, inline=True)
-        embed.set_image(url="attachment://qrcode.png")
+        # 空フィールドでスペースを作ってからQRコードを配置
+        embed.add_field(name="　", value="　", inline=True)
+        embed.set_thumbnail(url="attachment://qrcode.png")  # ✅ 右横にQRコード
 
-        # リンクを開くボタン（補助用）
+        # ボタン
         dm_view = discord.ui.View()
         dm_view.add_item(discord.ui.Button(
             label="🔗 ブラウザで開く",
@@ -91,7 +92,7 @@ class InviteDurationView(discord.ui.View):
         if dm_success:
             message = (
                 "✅ 招待リンクをDMに送信しました！\n"
-                "DM内のリンク部分をタップ → コピー または 長押ししてください"
+                "リンクをタップ → コピー または QRコードを読み取ってください"
             )
         else:
             message = f"⚠️ DMに送信できませんでした。こちらをコピーしてください👇\n```\n{invite.url}\n```"
