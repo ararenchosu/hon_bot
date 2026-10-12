@@ -34,7 +34,10 @@ class InviteDurationMemberView(discord.ui.View):
     )
     async def day1(self, itx: discord.Interaction, btn: discord.ui.Button):
         if not is_owner_or_member(itx):
-            await itx.response.send_message("❌ この機能は「鯖メン」以上のメンバーのみ使用可能です", ephemeral=True)
+            await itx.response.send_message(
+                "❌ この機能は「鯖メン」以上のメンバーのみ使用可能です",
+                ephemeral=True
+            )
             return
         await self._generate(itx, max_age=86400)
 
@@ -45,14 +48,12 @@ class InviteDurationMemberView(discord.ui.View):
             unique=True
         )
         expiry_text = "24時間"
-
         qr_img = qrcode.make(invite.url)
         qr_img = qr_img.resize((200, 200))
         buffer = io.BytesIO()
         qr_img.save(buffer, format="PNG")
         buffer.seek(0)
         qr_file = discord.File(fp=buffer, filename="qrcode.png")
-
         embed = discord.Embed(
             title="🔗 サーバー招待リンク",
             description="👇 リンクを押すとブラウザが開きます",
@@ -64,21 +65,18 @@ class InviteDurationMemberView(discord.ui.View):
             inline=True
         )
         embed.set_thumbnail(url="attachment://qrcode.png")
-
         dm_view = discord.ui.View()
         dm_view.add_item(discord.ui.Button(
             label="🔗 ブラウザで開く",
             style=discord.ButtonStyle.link,
             url=invite.url
         ))
-
         dm_success = False
         try:
             await itx.user.send(embed=embed, file=qr_file, view=dm_view)
             dm_success = True
         except Exception as e:
             print(f"DM送信エラー: {e}")
-
         if dm_success:
             message = (
                 "✅ 招待リンクをDMに送信しました！\n"
@@ -90,7 +88,6 @@ class InviteDurationMemberView(discord.ui.View):
                 f"⚠️ DMに送信できませんでした（{expiry_text}）\n"
                 f"[👉 ここを押して開く]({invite.url})\n```\n{invite.url}\n```"
             )
-
         await itx.response.edit_message(content=message, view=None)
 
 class InviteDurationOwnerView(discord.ui.View):
@@ -143,14 +140,12 @@ class InviteDurationOwnerView(discord.ui.View):
             expiry_text = "24時間"
         else:
             expiry_text = "7日"
-
         qr_img = qrcode.make(invite.url)
         qr_img = qr_img.resize((200, 200))
         buffer = io.BytesIO()
         qr_img.save(buffer, format="PNG")
         buffer.seek(0)
         qr_file = discord.File(fp=buffer, filename="qrcode.png")
-
         embed = discord.Embed(
             title="🔗 サーバー招待リンク",
             description="👇 リンクを押すとブラウザが開きます",
@@ -162,21 +157,18 @@ class InviteDurationOwnerView(discord.ui.View):
             inline=True
         )
         embed.set_thumbnail(url="attachment://qrcode.png")
-
         dm_view = discord.ui.View()
         dm_view.add_item(discord.ui.Button(
             label="🔗 ブラウザで開く",
             style=discord.ButtonStyle.link,
             url=invite.url
         ))
-
         dm_success = False
         try:
             await itx.user.send(embed=embed, file=qr_file, view=dm_view)
             dm_success = True
         except Exception as e:
             print(f"DM送信エラー: {e}")
-
         if dm_success:
             message = (
                 "✅ 招待リンクをDMに送信しました！\n"
@@ -188,7 +180,6 @@ class InviteDurationOwnerView(discord.ui.View):
                 f"⚠️ DMに送信できませんでした（{expiry_text}）\n"
                 f"[👉 ここを押して開く]({invite.url})\n```\n{invite.url}\n```"
             )
-
         await itx.response.edit_message(content=message, view=None)
 
 class InvitePanelView(discord.ui.View):
@@ -207,7 +198,6 @@ class InvitePanelView(discord.ui.View):
                 ephemeral=True
             )
             return
-
         if is_regular_member(itx):
             await itx.response.send_message(
                 "⏳ 24時間有効なリンクを生成します",
@@ -221,13 +211,14 @@ class InvitePanelView(discord.ui.View):
                 ephemeral=True
             )
 
-async def setup(tree: app_commands.CommandTree):
-    bot = tree.client
-    if not hasattr(bot, "_invite_views_registered"):
+# ✅ 引数をbot=Noneに統一
+async def setup(tree: app_commands.CommandTree, bot=None):
+    if bot is not None and not hasattr(bot, "_invite_views_registered"):
         bot.add_view(InvitePanelView())
         bot.add_view(InviteDurationMemberView())
         bot.add_view(InviteDurationOwnerView())
         bot._invite_views_registered = True
+        print("✅ invite_link 永続View登録完了")
 
     @tree.command(
         name="招待リンクパネル",
@@ -240,7 +231,6 @@ async def setup(tree: app_commands.CommandTree):
                 ephemeral=True
             )
             return
-
         embed = discord.Embed(
             title="🔗 招待リンク生成",
             description=(
