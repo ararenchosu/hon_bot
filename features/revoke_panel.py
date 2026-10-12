@@ -3,20 +3,36 @@ from discord import app_commands
 from core.common import is_owner
 from core.database import get_connection
 
-# ========== 追加：パネル保存/読み込み ==========
-def save_role_revoke_panel(channel_id: int, message_id: int, title: str, description: str, color: int):
-    """ロール剥奪パネル内容を保存（設置時・編集時に自動実行）"""
+# ========== パネル保存/読み込み ==========
+def init_role_revoke_table():
     conn = get_connection()
     cur = conn.cursor()
     cur.execute("""
-        INSERT OR REPLACE INTO role_revoke_panel (channel_id, message_id, title, description, color)
-        VALUES (?, ?, ?, ?, ?)
+        CREATE TABLE IF NOT EXISTS role_revoke_panel (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            channel_id TEXT NOT NULL,
+            message_id TEXT NOT NULL UNIQUE,
+            title TEXT NOT NULL,
+            description TEXT NOT NULL,
+            color INTEGER NOT NULL,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+def save_role_revoke_panel(channel_id: int, message_id: int, title: str, description: str, color: int):
+    conn = get_connection()
+    cur = conn.cursor()
+    cur.execute("""
+        INSERT OR REPLACE INTO role_revoke_panel 
+        (channel_id, message_id, title, description, color, updated_at)
+        VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     """, (str(channel_id), str(message_id), title, description, color))
     conn.commit()
     conn.close()
 
 def get_latest_role_revoke_panel():
-    """一番新しい保存内容を取得（編集時の初期値に使用）"""
     conn = get_connection()
     cur = conn.cursor()
     cur.execute("""
@@ -99,11 +115,11 @@ class RoleRevokePanelView(discord.ui.View):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
             return
-        # ✅ 最新の内容を初期値に表示
         latest = get_latest_role_revoke_panel()
         default_title = latest["title"] if latest else "🗑️ ロール剥奪"
-        default_desc = latest["description"] if latest else "ボタンから不要なロールを選択して外すことができます。"
-
+        default_desc = latest["description"] if latest else (
+            "ボタンから不要なロールを選択して外すことができます。"
+        )
         class EditModal(discord.ui.Modal, title="ロール剥奪パネル編集"):
             title_in = discord.ui.TextInput(label="タイトル", default=default_title)
             desc_in = discord.ui.TextInput(
@@ -112,10 +128,11 @@ class RoleRevokePanelView(discord.ui.View):
             )
             async def on_submit(self, inter: discord.Interaction):
                 embed = discord.Embed(
-                    title=str(self.title_in), description=str(self.desc_in), color=0xe74c3c
+                    title=str(self.title_in),
+                    description=str(self.desc_in),
+                    color=0xe74c3c
                 )
                 await inter.response.edit_message(embed=embed, view=RoleRevokePanelView())
-                # ✅ 編集したら自動保存
                 save_role_revoke_panel(
                     inter.channel_id,
                     inter.message.id,
@@ -126,7 +143,27 @@ class RoleRevokePanelView(discord.ui.View):
                 await inter.followup.send("✅ 更新・保存完了", ephemeral=True)
         await itx.response.send_modal(EditModal())
 
+    # ✅ 追加：パネル更新ボタン
+    @discord.ui.button(label="🔄 パネル更新", style=discord.ButtonStyle.secondary, custom_id="revoke:refresh")
+    async def refresh_panel(self, itx: discord.Interaction, btn: discord.ui.Button):
+        if not is_owner(itx):
+            await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
+            return
+        latest = get_latest_role_revoke_panel()
+        if not latest:
+            await itx.response.send_message("⚠️ 保存されたパネルが見つかりません", ephemeral=True)
+            return
+        embed = discord.Embed(
+            title=latest["title"],
+            description=latest["description"],
+            color=latest["color"]
+        )
+        await itx.response.edit_message(embed=embed)
+        await itx.followup.send("✅ パネルを最新に更新しました", ephemeral=True)
+
+
 async def setup(tree):
+    init_role_revoke_table()  # 初回実行時にテーブル作成
     @tree.command(name="ロール剥奪パネル設置", description="ロール剥奪パネル設置（オーナー専用）")
     async def cmd_revoke_panel(itx: discord.Interaction):
         if not is_owner(itx):
@@ -134,11 +171,10 @@ async def setup(tree):
             return
         embed = discord.Embed(
             title="🗑️ ロール剥奪",
-            description="⬇️のボタンを押して、不要になったロールを選択して外すことができます。\n誤ったロールを外した際ロール付与で付け直すことができます。",
+            description="⬇️のボタンを押して、不要になったロールを選択して外すことができます。\n誤ったロールを外した際はロール付与で付け直すことができます。",
             color=0xe74c3c
         )
         await itx.response.send_message(embed=embed, view=RoleRevokePanelView())
-        # ✅ 新規設置時に自動保存
         msg = await itx.original_response()
         save_role_revoke_panel(
             itx.channel_id,
