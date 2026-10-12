@@ -17,6 +17,7 @@ import features.security_panel as security_panel
 import features.invite_link as invite_link
 import features.backup_panel as backup_panel
 import features.command_list_panel as command_list_panel
+import features.command_restrict_panel as command_restrict_panel  # ✅ 追加
 import features.othello as othello
 import features.othello_panel as othello_panel
 import features.auth_panel as auth_panel
@@ -112,6 +113,7 @@ async def on_ready():
         from features.invite_link import InvitePanelView, InviteDurationView
         from features.backup_panel import BackupPanelView
         from features.command_list_panel import CommandListView
+        from features.command_restrict_panel import CommandRestrictMainView  # ✅ 追加
         
         bot.add_view(LotteryPanelView())
         bot.add_view(PointCheckPanelView())
@@ -131,10 +133,15 @@ async def on_ready():
         bot.add_view(InviteDurationView())
         bot.add_view(BackupPanelView())
         
-        # ✅ CommandListView に tree をセットして登録
+        # ✅ CommandListView
         clv = CommandListView()
         clv.tree = tree
         bot.add_view(clv)
+        
+        # ✅ コマンド制限パネル登録
+        crmv = CommandRestrictMainView()
+        crmv.all_cmds = sorted([c.name for c in tree.get_commands()])
+        bot.add_view(crmv)
         
         bot.add_view(othello_panel.OthelloPanelView())
         bot.add_view(call_panel.CallPanelView(bot))
@@ -174,6 +181,8 @@ async def on_ready():
     print("  ✅ backup_panel")
     await command_list_panel.setup(tree)
     print("  ✅ command_list_panel コマンド一覧")
+    await command_restrict_panel.setup(tree)  # ✅ 追加
+    print("  ✅ command_restrict_panel コマンド制限管理")
     await othello.setup(tree)
     await othello_panel.setup(tree)
     await auth_panel.setup(tree)
@@ -186,6 +195,17 @@ async def on_ready():
     print("  ✅ voice_channel_panel")
     await ranking_panel.setup(tree)
     print("  ✅ ranking_panel")
+    
+    # ✅ 全コマンド一括制限フック（個別編集不要）
+    from features.command_restrict_panel import check_command_allowed
+    for cmd in tree.walk_commands():
+        original = cmd.callback
+        async def wrapped(itx, *args, _orig=original, **kwargs):
+            if not await check_command_allowed(itx):
+                return
+            return await _orig(itx, *args, **kwargs)
+        cmd.callback = wrapped
+    print("✅ 全コマンド制限チェック 自動設定完了")
     
     print("✅ 全コマンド登録完了")
     print("\n📋 コマンド一覧：")
