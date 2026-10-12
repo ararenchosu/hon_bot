@@ -1,18 +1,10 @@
 import discord
 from datetime import datetime
 from core.common import JST, WELCOME_LEAVE_CHANNEL_ID
-from core.database import get_connection
 
-def get_next_member_number():
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute("SELECT value FROM stats WHERE key='member_total'")
-    r = cur.fetchone()
-    num = r[0] + 1 if r else 1
-    cur.execute("REPLACE INTO stats VALUES ('member_total', ?)", (num,))
-    conn.commit()
-    conn.close()
-    return num
+def get_human_member_count(guild: discord.Guild) -> int:
+    """サーバー内のBot以外のユーザー数を返す"""
+    return sum(1 for m in guild.members if not m.bot)
 
 def make_member_embed(member: discord.Member, is_join: bool = True) -> discord.Embed:
     created_at = member.created_at.astimezone(JST)
@@ -20,7 +12,11 @@ def make_member_embed(member: discord.Member, is_join: bool = True) -> discord.E
     account_age_days = (now - created_at).days
     created_str = created_at.strftime("%Y-%m-%d %H:%M:%S JST")
     
-    number = get_next_member_number() if is_join else "―"
+    # ✅ 現在のBot以外の総人数を取得
+    total_humans = get_human_member_count(member.guild)
+    # 参加時は+1、退出時はそのまま表示
+    display_count = total_humans + 1 if is_join else total_humans
+    
     account_type = "🤖 Bot" if member.bot else "👤 ユーザー"
     
     if account_age_days < 30:
@@ -43,7 +39,12 @@ def make_member_embed(member: discord.Member, is_join: bool = True) -> discord.E
     embed.add_field(name="アカウント作成日", value=f"{created_str}\n({age_note})", inline=False)
     embed.add_field(name="作成からの経過", value=f"**{account_age_days}日**", inline=False)
     embed.add_field(name="アカウント種類", value=account_type, inline=False)
-    embed.add_field(name="メンバー番号", value=f"**{number}人目**" if is_join else "―", inline=False)
+    # ✅ 総ユーザー数に変更
+    embed.add_field(
+        name="👥 サーバー人数",
+        value=f"**{display_count}人**",
+        inline=False
+    )
     embed.set_footer(text=f"サーバーID: {member.guild.id}")
     embed.set_thumbnail(url=member.display_avatar.url)
     return embed
@@ -65,7 +66,6 @@ async def on_member_remove(member: discord.Member) -> None:
         await ch.send(embed=embed)
 
 async def setup(bot: discord.Client) -> None:
-    # ✅ イベントをBotに登録！
     bot.event(on_member_join)
     bot.event(on_member_remove)
-    print("✅ welcome_leave イベント登録完了")
+    print("✅ welcome_leave イベント登録完了（サーバー総人数表示）")
