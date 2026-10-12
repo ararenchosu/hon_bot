@@ -25,6 +25,9 @@ import features.welcome_leave as welcome_leave
 import features.voice_channel_panel as voice_panel
 import features.ranking_panel as ranking_panel
 
+# ✅ ここにメッセージを送るチャンネルIDを入れる
+STATUS_LOG_CHANNEL_ID = 123456789012345678  # ← 自分のチャンネルIDに書き換える
+
 BOT_TOKEN = os.getenv("DISCORD_TOKEN")
 if not BOT_TOKEN:
     print("❌ 環境変数 DISCORD_TOKEN が設定されていません")
@@ -38,6 +41,28 @@ intents.message_content = True
 intents.members = True
 bot = discord.Client(intents=intents)
 tree = app_commands.CommandTree(bot)
+
+# ========== 共通：ステータス通知送信関数 ==========
+async def send_status_embed(title: str, description: str, color: int):
+    """ステータスメッセージを送信する共通処理"""
+    if not STATUS_LOG_CHANNEL_ID or STATUS_LOG_CHANNEL_ID == 123456789012345678:
+        return  # ID未設定時はスキップ
+    try:
+        channel = bot.get_channel(STATUS_LOG_CHANNEL_ID)
+        if not channel:
+            print(f"⚠️ チャンネルが見つかりません (ID: {STATUS_LOG_CHANNEL_ID})")
+            return
+        embed = discord.Embed(
+            title=title,
+            description=description,
+            color=color
+        )
+        embed.set_footer(
+            text=f"時刻：{discord.utils.format_dt(discord.utils.utcnow(), 'F')}"
+        )
+        await channel.send(embed=embed)
+    except Exception as e:
+        print(f"⚠️ ステータス通知送信エラー: {e}")
 
 # ========== 監視イベント ==========
 @bot.event
@@ -64,7 +89,7 @@ async def on_ready():
             EmergencyLockView, EmergencyUnlockView
         )
         from features.invite_link import InvitePanelView, InviteDurationView
-        from features.backup_panel import BackupPanelView  # ✅ RestartView 削除
+        from features.backup_panel import BackupPanelView
 
         bot.add_view(LotteryPanelView())
         bot.add_view(PointCheckPanelView())
@@ -82,7 +107,7 @@ async def on_ready():
         bot.add_view(EmergencyUnlockView())
         bot.add_view(InvitePanelView())
         bot.add_view(InviteDurationView())
-        bot.add_view(BackupPanelView())  # ✅ これだけ
+        bot.add_view(BackupPanelView())
         bot.add_view(othello_panel.OthelloPanelView())
         bot.add_view(call_panel.CallPanelView(bot))
         bot.add_view(auth_panel.AuthPanelView())
@@ -145,6 +170,24 @@ async def on_ready():
     print("\n🔄 自動更新タスク起動中...")
     asyncio.create_task(ranking_panel.auto_update_task(bot))
     print("✅ ランキング自動更新タスク起動完了")
+
+    # ✅ 起動完了メッセージ送信
+    await send_status_embed(
+        title="✅ 起動完了",
+        description="Botが正常に起動しました。",
+        color=0x2ECC71
+    )
+    print("✅ 起動通知送信完了")
     print("\n✅ 起動完了\n")
+
+# ========== 停止時イベント ==========
+@bot.event
+async def on_close():
+    """Botが閉じられる直前に実行"""
+    await send_status_embed(
+        title="🛑 停止/再起動",
+        description="Botが停止されました。",
+        color=0xE74C3C
+    )
 
 bot.run(BOT_TOKEN)
