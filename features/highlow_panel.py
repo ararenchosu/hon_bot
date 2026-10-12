@@ -5,9 +5,11 @@ import json
 import os
 from datetime import datetime, timedelta, timezone
 from core.common import is_owner
+
 JST = timezone(timedelta(hours=9))
 DATA_FILE = "kn_points_data.json"
 HL_RESULT_CHANNEL_ID = 1558772472881488004
+
 RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"]
 CARD_VALUES = {
     "A": 1,
@@ -73,7 +75,7 @@ games = {}
 
 class HighLowGameView(discord.ui.View):
     def __init__(self, uid, bet, is_free=False):
-        super().__init__(timeout=180)  # ゲーム中は3分でタイムアウト（プレイ画面なのでOK）
+        super().__init__(timeout=180)  # ゲーム中は3分でタイムアウト
         self.user_id = uid
         self.bet = bet
         self.is_free = is_free
@@ -165,7 +167,12 @@ class HighLowPanelView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)  # ✅ 永久有効
 
-    @discord.ui.button(label="🔍 途中のゲーム", style=discord.ButtonStyle.secondary, custom_id="hl:resume", row=0)
+    @discord.ui.button(
+        label="🔍 途中のゲーム",
+        style=discord.ButtonStyle.secondary,
+        custom_id="hl:resume",
+        row=0
+    )
     async def resume(self, itx, btn):
         g = games.get(itx.user.id)
         if not g:
@@ -177,28 +184,58 @@ class HighLowPanelView(discord.ui.View):
         embed.add_field(name="現在のカード", value=f"**{card_value(g.first_card[1])}**", inline=False)
         await itx.response.send_message(embed=embed, view=g, ephemeral=True)
 
-    @discord.ui.button(label="💳 ポイント確認", style=discord.ButtonStyle.success, custom_id="hl:check_points", row=1)
+    @discord.ui.button(
+        label="💳 ポイント確認",
+        style=discord.ButtonStyle.success,
+        custom_id="hl:check_points",
+        row=1
+    )
     async def check_points(self, itx, btn):
         pts = get_points(itx.user.id)
         await itx.response.send_message(f"💳 あなたのポイント：**{pts}P**", ephemeral=True)
 
-    @discord.ui.button(label="🍀 お試し", style=discord.ButtonStyle.secondary, custom_id="hl:free", row=2)
+    @discord.ui.button(
+        label="🍀 お試し",
+        style=discord.ButtonStyle.secondary,
+        custom_id="hl:free",
+        row=2
+    )
     async def free(self, itx, btn):
         await start_game(itx, 0, True)
 
-    @discord.ui.button(label="💳 1P", style=discord.ButtonStyle.primary, custom_id="hl:1", row=3)
+    @discord.ui.button(
+        label="💳 1P",
+        style=discord.ButtonStyle.primary,
+        custom_id="hl:1",
+        row=3
+    )
     async def p1(self, itx, btn):
         await start_game(itx, 1)
 
-    @discord.ui.button(label="💳 10P", style=discord.ButtonStyle.primary, custom_id="hl:10", row=3)
+    @discord.ui.button(
+        label="💳 10P",
+        style=discord.ButtonStyle.primary,
+        custom_id="hl:10",
+        row=3
+    )
     async def p10(self, itx, btn):
         await start_game(itx, 10)
 
-    @discord.ui.button(label="💳 50P", style=discord.ButtonStyle.primary, custom_id="hl:50", row=4)
+    @discord.ui.button(
+        label="💳 50P",
+        style=discord.ButtonStyle.primary,
+        custom_id="hl:50",
+        row=4
+    )
     async def p50(self, itx, btn):
         await start_game(itx, 50)
 
-    @discord.ui.button(label="💳 100P", style=discord.ButtonStyle.danger, custom_id="hl:100", row=4)
+    @discord.ui.button(
+        label="💳 100P",
+        style=discord.ButtonStyle.danger,
+        custom_id="hl:100",
+        row=4
+    )
     async def p100(self, itx, btn):
         await start_game(itx, 100)
 
@@ -216,20 +253,26 @@ async def start_game(itx, bet, is_free=False):
     embed.add_field(name="最初の数字", value=f"**{card_value(view.first_card[1])}**", inline=False)
     await itx.response.send_message(embed=embed, view=view, ephemeral=True)
 
-async def setup(tree: app_commands.CommandTree):
-    bot = tree.client
-    # ✅ 永続View登録
-    bot.add_view(HighLowPanelView())
+# ✅ 引数をbot=Noneに統一
+async def setup(tree: app_commands.CommandTree, bot=None):
+    if bot is not None and not hasattr(bot, "_highlow_registered"):
+        bot.add_view(HighLowPanelView())
+        bot._highlow_registered = True
+        print("✅ highlow_panel 永続View登録完了")
 
     @tree.command(name="ハイローパネル設置", description="ハイローパネル設置（オーナー専用）")
     async def cmd(itx):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用コマンドです", ephemeral=True)
             return
-        embed = discord.Embed(title="📈 ハイ＆ロー", description="""🔍 途中のゲーム → 消しても再表示
+        embed = discord.Embed(
+            title="📈 ハイ＆ロー",
+            description="""🔍 途中のゲーム → 消しても再表示
 💳 ポイント確認 → 現在のポイントを表示
 🍀 お試し → 無料プレイ
 💳 1P/10P/50P/100P → ポイントで対戦
-A=1 ～ K=13 の数字で勝負！""", color=0x3498DB)
+A=1 ～ K=13 の数字で勝負！""",
+            color=0x3498DB
+        )
         await itx.response.send_message(embed=embed, view=HighLowPanelView())
         await itx.followup.send("✅ 設置完了", ephemeral=True)
