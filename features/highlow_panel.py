@@ -5,12 +5,9 @@ import json
 import os
 from datetime import datetime, timedelta, timezone
 from core.common import is_owner
-
 JST = timezone(timedelta(hours=9))
 DATA_FILE = "kn_points_data.json"
 HL_RESULT_CHANNEL_ID = 1558772472881488004
-
-# ✅ 2=2 ～ K=13、A=1 → 1～13に収まる
 RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"]
 CARD_VALUES = {
     "A": 1,
@@ -59,7 +56,6 @@ async def send_result_embed(client, user, first_card, next_card, choice, result_
     title = "📈 ハイ＆ロー確定" if is_cashout else ("📈 結果（お試し）" if is_free else "📈 結果")
     color = 0x999999 if is_free else (0x2ECC71 if change >= 0 else 0xE74C3C)
     embed = discord.Embed(title=title, description=f"{user.mention} がプレイ", color=color, timestamp=datetime.now(JST))
-    # ✅ 数字だけ表示
     embed.add_field(name="1枚目", value=f"{card_value(first_card[1])}", inline=True)
     if next_card:
         embed.add_field(name="選択", value="📈ハイ" if choice=="high" else "📉ロー", inline=True)
@@ -72,13 +68,12 @@ async def send_result_embed(client, user, first_card, next_card, choice, result_
         embed.add_field(name="変動", value=f"{change:+d}P", inline=True)
         embed.add_field(name="合計", value=f"{total}P", inline=True)
     await channel.send(embed=embed)
-    # ✅ カウント・チャンネル名更新なしに変更
 
 games = {}
 
 class HighLowGameView(discord.ui.View):
     def __init__(self, uid, bet, is_free=False):
-        super().__init__(timeout=180)
+        super().__init__(timeout=180)  # ゲーム中は3分でタイムアウト（プレイ画面なのでOK）
         self.user_id = uid
         self.bet = bet
         self.is_free = is_free
@@ -98,7 +93,6 @@ class HighLowGameView(discord.ui.View):
         mode = "🍀 お試し" if self.is_free else f"賭け：{self.bet}P"
         if self.streak > 0: mode += f"\n🔥{self.streak}連続 ×{get_multiplier(self.streak):.1f}"
         embed = discord.Embed(title="📈 ハイ＆ロー", description=mode, color=0x3498DB)
-        # ✅ 数字だけ表示
         embed.add_field(name="現在のカード", value=f"**{card_value(self.first_card[1])}**", inline=False)
         await itx.response.edit_message(embed=embed, view=self)
 
@@ -122,7 +116,6 @@ class HighLowGameView(discord.ui.View):
             total = 0 if self.is_free else add_points(self.user_id, change)
             self.disable_all_items()
             embed = discord.Embed(title="📈 ハイ＆ロー", description="🍀 お試し" if self.is_free else f"賭け：{self.bet}P", color=0xE74C3C)
-            # ✅ 数字だけ表示
             embed.add_field(name="1枚目", value=f"{v1}", inline=True)
             embed.add_field(name="2枚目", value=f"{v2}", inline=True)
             embed.add_field(name="結果", value="💔 ハズレ…没収", inline=False)
@@ -170,7 +163,7 @@ class HighLowGameView(discord.ui.View):
 
 class HighLowPanelView(discord.ui.View):
     def __init__(self):
-        super().__init__(timeout=None)
+        super().__init__(timeout=None)  # ✅ 永久有効
 
     @discord.ui.button(label="🔍 途中のゲーム", style=discord.ButtonStyle.secondary, custom_id="hl:resume", row=0)
     async def resume(self, itx, btn):
@@ -224,10 +217,14 @@ async def start_game(itx, bet, is_free=False):
     await itx.response.send_message(embed=embed, view=view, ephemeral=True)
 
 async def setup(tree: app_commands.CommandTree):
-    @tree.command(name="ハイローパネル設置", description="管理者用")
+    bot = tree.client
+    # ✅ 永続View登録
+    bot.add_view(HighLowPanelView())
+
+    @tree.command(name="ハイローパネル設置", description="ハイローパネル設置（オーナー専用）")
     async def cmd(itx):
         if not is_owner(itx):
-            await itx.response.send_message("❌ 管理者専用", ephemeral=True)
+            await itx.response.send_message("❌ オーナー専用コマンドです", ephemeral=True)
             return
         embed = discord.Embed(title="📈 ハイ＆ロー", description="""🔍 途中のゲーム → 消しても再表示
 💳 ポイント確認 → 現在のポイントを表示
