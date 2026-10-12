@@ -9,8 +9,8 @@ from core.common import is_owner
 # ✅ タイムゾーン：日本標準時
 JST = timezone(timedelta(hours=9))
 
-# ✅ 正しい通知先チャンネルIDに統一！
-STATUS_LOG_CHANNEL_ID = 1558099501305176095
+# ✅ 正しいログ先に統一！
+STATUS_LOG_CHANNEL_ID = 1559119439981449256
 REASON_FILE = ".last_stop_reason"
 
 BACKUP_DIR = "data_backup"
@@ -20,7 +20,7 @@ POINT_FILE = "kn_points_data.json"
 
 os.makedirs(BACKUP_DIR, exist_ok=True)
 
-# ========== 共通：停止理由管理 ==========
+# ========== 停止理由管理 ==========
 def set_reason(reason: str):
     with open(REASON_FILE, "w", encoding="utf-8") as f:
         f.write(reason)
@@ -179,7 +179,6 @@ class BackupPanelView(discord.ui.View):
             "🔄 Botを再起動します…\n停止→5秒経過→再起動開始→完了 の順に実行します ✅",
             ephemeral=True
         )
-        # ✅ フラグ：再起動ボタンから起動されたことを記録
         set_reason("restart_button")
         
         # ① 再起動実行ログ
@@ -200,10 +199,9 @@ class BackupPanelView(discord.ui.View):
             color=0xE74C3C
         )
         
-        # 5秒カウント
         await asyncio.sleep(5)
         
-        # ③ 5秒経過 → 再起動開始ログ
+        # ③ 再起動開始ログ
         await send_status_embed(
             itx.client,
             title="⏳ 再起動開始",
@@ -211,7 +209,6 @@ class BackupPanelView(discord.ui.View):
             color=0x9B59B6
         )
         
-        # 少し待ってからBotを閉じる
         async def delayed_exit():
             await asyncio.sleep(0.5)
             await itx.client.close()
