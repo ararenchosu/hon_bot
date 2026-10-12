@@ -18,7 +18,7 @@ import features.invite_link as invite_link
 import features.backup_panel as backup_panel
 import features.command_list_panel as command_list_panel
 import features.othello as othello
-import features.othello_panel as othello_panel  # ✅ トップレベルでimport
+import features.othello_panel as othello_panel
 import features.auth_panel as auth_panel
 import features.role_panel as role_panel
 import features.revoke_panel as revoke_panel
@@ -199,7 +199,7 @@ async def on_ready():
     await auth_panel.setup(tree); print("  ✅ auth_panel")
     await role_panel.setup(tree); print("  ✅ role_panel")
     await revoke_panel.setup(tree); print("  ✅ revoke_panel")
-    await call_panel.setup(tree); print("  ✅ call_panel")
+    await call_panel.setup(tree, bot); print("  ✅ call_panel")
     await welcome_leave.setup(bot); print("  ✅ welcome_leave")
     await voice_panel.setup(tree); print("  ✅ voice_panel")
     await ranking_panel.setup(tree); print("  ✅ ranking_panel")
