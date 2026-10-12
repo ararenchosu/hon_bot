@@ -53,7 +53,11 @@ class LoginBonusPanelView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)  # ✅ 永久有効
 
-    @discord.ui.button(label="🎁 ログインボーナス受取", style=discord.ButtonStyle.primary, custom_id="loginbonus:receive")
+    @discord.ui.button(
+        label="🎁 ログインボーナス受取",
+        style=discord.ButtonStyle.primary,
+        custom_id="loginbonus:receive"
+    )
     async def receive_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
         if not point_data.can_receive_bonus_today(itx.user.id):
             await itx.response.send_message(
@@ -70,7 +74,11 @@ class LoginBonusPanelView(discord.ui.View):
             ephemeral=True
         )
 
-    @discord.ui.button(label="✏️ パネル編集", style=discord.ButtonStyle.secondary, custom_id="loginbonus:edit")
+    @discord.ui.button(
+        label="✏️ パネル編集",
+        style=discord.ButtonStyle.secondary,
+        custom_id="loginbonus:edit"
+    )
     async def edit_bonus_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
@@ -82,6 +90,7 @@ class LoginBonusPanelView(discord.ui.View):
             "⬇️のボタンを押すと1日1回100ポイントがもらえます✨\n"
             "🗳 くじ引きとは別に受け取れます！"
         )
+        
         class BonusEditModal(discord.ui.Modal, title="ログインボーナス編集"):
             title_in = discord.ui.TextInput(
                 label="タイトル",
@@ -94,6 +103,7 @@ class LoginBonusPanelView(discord.ui.View):
                 default=default_desc,
                 required=True
             )
+            
             async def on_submit(self, m_itx: discord.Interaction):
                 embed = discord.Embed(
                     title=str(self.title_in),
@@ -112,7 +122,11 @@ class LoginBonusPanelView(discord.ui.View):
         
         await itx.response.send_modal(BonusEditModal())
 
-    @discord.ui.button(label="🔄 パネル更新", style=discord.ButtonStyle.secondary, custom_id="loginbonus:refresh")
+    @discord.ui.button(
+        label="🔄 パネル更新",
+        style=discord.ButtonStyle.secondary,
+        custom_id="loginbonus:refresh"
+    )
     async def refresh_panel(self, itx: discord.Interaction, btn: discord.ui.Button):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
@@ -131,11 +145,17 @@ class LoginBonusPanelView(discord.ui.View):
         await itx.response.edit_message(embed=embed)
         await itx.followup.send("✅ パネルを最新に更新しました", ephemeral=True)
 
-async def setup(tree):
-    bot = tree.client
-    bot.add_view(LoginBonusPanelView())  # ✅ 追加：再起動後もボタン有効
+# ✅ 引数をbot=Noneにしてmain.pyから呼び出せるように
+async def setup(tree, bot=None):
+    if bot is not None and not hasattr(bot, "_login_bonus_registered"):
+        bot.add_view(LoginBonusPanelView())
+        bot._login_bonus_registered = True
+        print("✅ login_bonus 永続View登録完了")
     
-    @tree.command(name="ログインボーナスパネル設置", description="ログインボーナスパネルを設置（オーナー専用）")
+    @tree.command(
+        name="ログインボーナスパネル設置",
+        description="ログインボーナスパネルを設置（オーナー専用）"
+    )
     async def cmd_login_bonus_panel(itx: discord.Interaction):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用コマンドです", ephemeral=True)
