@@ -6,7 +6,6 @@ import io
 
 
 class InviteDurationView(discord.ui.View):
-    # ✅ timeout=None に変更 + 各ボタンにcustom_id追加
     def __init__(self):
         super().__init__(timeout=None)
 
@@ -35,12 +34,14 @@ class InviteDurationView(discord.ui.View):
         await self._generate(itx, max_age=604800)
 
     async def _generate(self, itx: discord.Interaction, max_age: int):
+        # 招待リンク作成
         invite = await itx.channel.create_invite(
             max_age=max_age,
             max_uses=0,
             unique=True
         )
 
+        # 期限表示
         if max_age == 0:
             expiry_text = "永久"
         elif max_age == 86400:
@@ -48,30 +49,36 @@ class InviteDurationView(discord.ui.View):
         else:
             expiry_text = "7日"
 
-        # QRコード生成
+        # ✅ QRコード生成
         qr_img = qrcode.make(invite.url)
         buffer = io.BytesIO()
         qr_img.save(buffer, format="PNG")
         buffer.seek(0)
-        qr_file = discord.File(fp=buffer, filename="invite_qr.png")
+        qr_file = discord.File(fp=buffer, filename="qrcode.png")
 
-        # DM送信
+        # ✅ Embed作成
+        embed = discord.Embed(
+            title="🔗 サーバー招待リンク",
+            description=f"スマホのカメラまたはQRリーダーで読み取ってください",
+            color=0x2ECC71
+        )
+        embed.add_field(name="リンク", value=f"[{invite.url}]({invite.url})", inline=False)
+        embed.add_field(name="有効期限", value=expiry_text, inline=True)
+        embed.set_image(url="attachment://qrcode.png")  # ✅ QRコードを埋め込みに表示
+
+        # ✅ DMにEmbed＋QRコード送信
         dm_success = False
         try:
-            await itx.user.send(
-                f"✅ サーバー招待リンク\n"
-                f"🔗 {invite.url}\n"
-                f"⏳ 有効期限：{expiry_text}",
-                file=qr_file
-            )
+            await itx.user.send(embed=embed, file=qr_file)
             dm_success = True
         except Exception as e:
             print(f"DM送信エラー: {e}")
 
+        # 結果を表示
         if dm_success:
-            message = "✅ 招待リンク＋QRコードをDMに送信しました！\n🔗 " + invite.url
+            message = "✅ 招待リンクをDMに送信しました！\n埋め込みメッセージにQRコードを表示しています👇"
         else:
-            message = "⚠️ DMに送信できませんでした。こちらがリンクです👇\n🔗 " + invite.url
+            message = f"⚠️ DMに送信できませんでした。こちらがリンクです👇\n🔗 {invite.url}"
 
         await itx.response.edit_message(content=message, view=None)
 
@@ -111,7 +118,7 @@ async def setup(tree: app_commands.CommandTree):
         embed = discord.Embed(
             title="🔗 招待リンク生成",
             description="下のボタンを押して招待リンクを作成できます\n"
-                        "✅ リンク＋QRコードがDMに送信されます\n"
+                        "✅ リンク＋QRコードがDMに届きます\n"
                         "※ サーバー側にログは残りません",
             color=0x3498DB
         )
