@@ -125,7 +125,7 @@ async def on_ready():
             LockChannelView, UnlockChannelView,
             EmergencyLockView, EmergencyUnlockView
         )
-        from features.invite_link import InvitePanelView, InviteDurationView
+        from features.invite_link import InvitePanelView  # ✅ InviteDurationView削除
         from features.backup_panel import BackupPanelView, RestoreConfirmView
         from features.command_list_panel import CommandListView
         
@@ -145,7 +145,6 @@ async def on_ready():
             (EmergencyLockView, "EmergencyLockView"),
             (EmergencyUnlockView, "EmergencyUnlockView"),
             (InvitePanelView, "InvitePanelView"),
-            (InviteDurationView, "InviteDurationView"),
             (BackupPanelView, "BackupPanelView"),
             (RestoreConfirmView, "RestoreConfirmView"),
             (othello_panel.OthelloPanelView, "OthelloPanelView"),
@@ -179,7 +178,7 @@ async def on_ready():
         import traceback
         traceback.print_exc()
     
-    # ========== コマンド登録（botを渡す） ==========
+    # ========== コマンド登録 ==========
     print("\n🔄 コマンド登録中...")
     await lottery_setup(tree, bot); print("  ✅ lottery_panel")
     await login_bonus_setup(tree, bot); print("  ✅ login_bonus")
