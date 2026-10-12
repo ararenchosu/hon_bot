@@ -66,7 +66,6 @@ class OthelloPanelView(discord.ui.View):
         selected_opponent = None
         selection_done = asyncio.Event()
 
-        # ✅ 修正：@user_select → UserSelect に変更
         class OpponentSelectView(discord.ui.View):
             def __init__(self):
                 super().__init__(timeout=60)
@@ -119,7 +118,6 @@ class OthelloPanelView(discord.ui.View):
         challenger = itx.user
         guild = itx.guild
 
-        # チャンネル作成
         category = None
         if OTHELLO_CATEGORY_ID and OTHELLO_CATEGORY_ID != 0:
             category = guild.get_channel(OTHELLO_CATEGORY_ID)
@@ -151,7 +149,6 @@ class OthelloPanelView(discord.ui.View):
             ephemeral=True
         )
 
-        # 承認/拒否ボタン
         class ApproveRejectView(discord.ui.View):
             def __init__(self):
                 super().__init__(timeout=120)
@@ -168,6 +165,7 @@ class OthelloPanelView(discord.ui.View):
                 class StartBoardView(discord.ui.View):
                     def __init__(self):
                         super().__init__(timeout=None)
+
                     @discord.ui.button(label="🎮 盤面表示", style=discord.ButtonStyle.primary)
                     async def show_board_btn(self, board_itx: discord.Interaction, btn):
                         await board_itx.response.defer()
@@ -246,6 +244,7 @@ class OthelloPanelView(discord.ui.View):
                 label="説明文", style=discord.TextStyle.long,
                 default=default_desc
             )
+
             async def on_submit(self, modal_itx: discord.Interaction):
                 embed = discord.Embed(
                     title=str(self.title_in),
@@ -281,11 +280,12 @@ class OthelloPanelView(discord.ui.View):
         await itx.response.edit_message(embed=embed)
         await itx.followup.send("✅ パネルを最新に更新しました", ephemeral=True)
 
-async def setup(tree):
-    bot = tree.client
-    if not hasattr(bot, "_othello_panel_registered"):
-        bot.add_view(OthelloPanelView())  # ✅ 永久登録
+
+async def setup(tree, bot=None):
+    if bot is not None and not hasattr(bot, "_othello_panel_registered"):
+        bot.add_view(OthelloPanelView())
         bot._othello_panel_registered = True
+        print("✅ othello_panel 永続View登録完了")
 
     @tree.command(name="オセロパネル設置", description="オセロ対戦パネルを設置（オーナー専用）")
     async def cmd_othello_panel(itx: discord.Interaction):
