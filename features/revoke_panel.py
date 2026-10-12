@@ -131,6 +131,7 @@ class RoleRevokePanelView(discord.ui.View):
                 label="説明", style=discord.TextStyle.long,
                 default=default_desc
             )
+
             async def on_submit(self, inter: discord.Interaction):
                 embed = discord.Embed(
                     title=str(self.title_in),
@@ -166,10 +167,13 @@ class RoleRevokePanelView(discord.ui.View):
         await itx.response.edit_message(embed=embed)
         await itx.followup.send("✅ パネルを最新に更新しました", ephemeral=True)
 
-async def setup(tree: app_commands.CommandTree):
+
+async def setup(tree, bot=None):
     init_role_revoke_table()
-    bot = tree.client
-    bot.add_view(RoleRevokePanelView())  # ✅ 永久登録
+    if bot is not None and not hasattr(bot, "_revoke_panel_registered"):
+        bot.add_view(RoleRevokePanelView())
+        bot._revoke_panel_registered = True
+        print("✅ revoke_panel 永続View登録完了")
 
     @tree.command(name="ロール剥奪パネル設置", description="ロール剥奪パネル設置（オーナー専用）")
     async def cmd_revoke_panel(itx: discord.Interaction):
