@@ -30,8 +30,8 @@ import features.ranking_panel as ranking_panel
 JST = timezone(timedelta(hours=9))
 STATUS_LOG_CHANNEL_ID = 1559119439981449256
 REASON_FILE = ".last_stop_reason"
-BOT_TOKEN = os.getenv("DISCORD_TOKEN")
 
+BOT_TOKEN = os.getenv("DISCORD_TOKEN")
 if not BOT_TOKEN:
     print("❌ 環境変数 DISCORD_TOKEN が設定されていません")
     exit(1)
@@ -105,7 +105,7 @@ async def on_ready():
             return instance
         except TypeError as e:
             print(f"   ❌ 【{view_name}】: 引数が必要なため永続化不可！→ {e}")
-            print(f"      → 修正法: __init__から引数を削除し、inter.client から bot を取得してください")
+            print(f"      → 修正法: __init__から引数を削除し、interaction.client から bot を取得してください")
             return None
     
     # ========== View登録 ==========
@@ -179,30 +179,30 @@ async def on_ready():
         import traceback
         traceback.print_exc()
     
-    # ========== コマンド登録 ==========
+    # ========== コマンド登録（botを渡す） ==========
     print("\n🔄 コマンド登録中...")
-    await lottery_setup(tree); print("  ✅ lottery_panel")
-    await login_bonus_setup(tree); print("  ✅ login_bonus")
-    await slots_setup(tree); print("  ✅ slots_panel")
-    await blackjack_setup(tree); print("  ✅ blackjack_panel")
-    await highlow_setup(tree); print("  ✅ highlow_panel")
-    await point_admin_setup(tree); print("  ✅ point_admin_panel")
+    await lottery_setup(tree, bot); print("  ✅ lottery_panel")
+    await login_bonus_setup(tree, bot); print("  ✅ login_bonus")
+    await slots_setup(tree, bot); print("  ✅ slots_panel")
+    await blackjack_setup(tree, bot); print("  ✅ blackjack_panel")
+    await highlow_setup(tree, bot); print("  ✅ highlow_panel")
+    await point_admin_setup(tree, bot); print("  ✅ point_admin_panel")
     await embed_sender.setup(tree); print("  ✅ embed_sender")
     await clear_messages.setup(tree); print("  ✅ clear_messages")
-    await moderation_panel.setup(tree); print("  ✅ moderation_panel")
-    await security_panel.setup(tree); print("  ✅ security_panel")
-    await invite_link.setup(tree); print("  ✅ invite_link")
-    await backup_panel.setup(tree); print("  ✅ backup_panel")
+    await moderation_panel.setup(tree, bot); print("  ✅ moderation_panel")
+    await security_panel.setup(tree, bot); print("  ✅ security_panel")
+    await invite_link.setup(tree, bot); print("  ✅ invite_link")
+    await backup_panel.setup(tree, bot); print("  ✅ backup_panel")
     await command_list_panel.setup(tree); print("  ✅ command_list_panel")
     await othello.setup(tree); print("  ✅ othello")
-    await othello_panel.setup(tree); print("  ✅ othello_panel")
-    await auth_panel.setup(tree); print("  ✅ auth_panel")
-    await role_panel.setup(tree); print("  ✅ role_panel")
-    await revoke_panel.setup(tree); print("  ✅ revoke_panel")
+    await othello_panel.setup(tree, bot); print("  ✅ othello_panel")
+    await auth_panel.setup(tree, bot); print("  ✅ auth_panel")
+    await role_panel.setup(tree, bot); print("  ✅ role_panel")
+    await revoke_panel.setup(tree, bot); print("  ✅ revoke_panel")
     await call_panel.setup(tree, bot); print("  ✅ call_panel")
     await welcome_leave.setup(bot); print("  ✅ welcome_leave")
-    await voice_panel.setup(tree); print("  ✅ voice_panel")
-    await ranking_panel.setup(tree); print("  ✅ ranking_panel")
+    await voice_panel.setup(tree, bot); print("  ✅ voice_panel")
+    await ranking_panel.setup(tree, bot); print("  ✅ ranking_panel")
     
     print("✅ 全コマンド登録完了")
     
