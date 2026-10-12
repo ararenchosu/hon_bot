@@ -17,7 +17,6 @@ import features.security_panel as security_panel
 import features.invite_link as invite_link
 import features.backup_panel as backup_panel
 import features.command_list_panel as command_list_panel
-import features.command_restrict_panel as command_restrict_panel
 import features.othello as othello
 import features.othello_panel as othello_panel
 import features.auth_panel as auth_panel
@@ -91,11 +90,6 @@ async def on_message(message):
         await security_panel.check_forbidden_words(message)
         await security_panel.check_link_restriction(message)
 
-# ✅ チェック関数（どこからでも呼び出せるように）
-async def check_restriction(itx: discord.Interaction):
-    from features.command_restrict_panel import check_command_allowed
-    return await check_command_allowed(itx)
-
 @bot.event
 async def on_ready():
     print(f"\n✅ ログイン：{bot.user}")
@@ -118,7 +112,6 @@ async def on_ready():
         from features.invite_link import InvitePanelView, InviteDurationView
         from features.backup_panel import BackupPanelView
         from features.command_list_panel import CommandListView
-        from features.command_restrict_panel import CommandRestrictMainView
         
         bot.add_view(LotteryPanelView())
         bot.add_view(PointCheckPanelView())
@@ -142,10 +135,6 @@ async def on_ready():
         clv.tree = tree
         bot.add_view(clv)
         
-        crmv = CommandRestrictMainView()
-        crmv.all_cmds = sorted([c.name for c in tree.get_commands()])
-        bot.add_view(crmv)
-        
         bot.add_view(othello_panel.OthelloPanelView())
         bot.add_view(call_panel.CallPanelView(bot))
         bot.add_view(auth_panel.AuthPanelView())
@@ -158,8 +147,6 @@ async def on_ready():
         print(f"⚠️ View登録エラー: {e}")
     
     print("\n🔄 コマンド登録中...")
-    
-    # ✅ 登録後に個別callbackをラップする方式（clear_commands不使用）
     await lottery_setup(tree)
     print("  ✅ lottery_panel")
     await login_bonus_setup(tree)
@@ -186,8 +173,6 @@ async def on_ready():
     print("  ✅ backup_panel")
     await command_list_panel.setup(tree)
     print("  ✅ command_list_panel コマンド一覧")
-    await command_restrict_panel.setup(tree)
-    print("  ✅ command_restrict_panel コマンド制限管理")
     await othello.setup(tree)
     await othello_panel.setup(tree)
     await auth_panel.setup(tree)
@@ -200,25 +185,6 @@ async def on_ready():
     print("  ✅ voice_channel_panel")
     await ranking_panel.setup(tree)
     print("  ✅ ranking_panel")
-    
-    # ✅ 登録済みコマンドを1個ずつ上書き登録
-    original_commands = tree.get_commands()
-    
-    for cmd in original_commands:
-        original_callback = cmd.callback
-        
-        # チェックを挟んだ新しいcallback
-        async def wrapped_callback(itx, *args, _cb=original_callback, **kwargs):
-            if not await check_restriction(itx):
-                return
-            await _cb(itx, *args, **kwargs)
-        
-        # コマンドを再登録（上書き）
-        @tree.command(name=cmd.name, description=cmd.description)
-        async def new_command(itx, *args, _wrap=wrapped_callback, **kwargs):
-            await _wrap(itx, *args, **kwargs)
-    
-    print("✅ 全コマンド制限チェック 自動設定完了")
     
     print("✅ 全コマンド登録完了")
     print("\n📋 コマンド一覧：")
