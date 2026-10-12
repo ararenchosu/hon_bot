@@ -9,7 +9,8 @@ from core.common import is_owner
 # ✅ タイムゾーン：日本標準時
 JST = timezone(timedelta(hours=9))
 
-STATUS_LOG_CHANNEL_ID = 1558770503261491311
+# ✅ 正しい通知先チャンネルIDに統一！
+STATUS_LOG_CHANNEL_ID = 1558099501305176095
 REASON_FILE = ".last_stop_reason"
 
 BACKUP_DIR = "data_backup"
@@ -41,6 +42,7 @@ async def send_status_embed(client, title: str, description: str, color: int):
     try:
         channel = client.get_channel(STATUS_LOG_CHANNEL_ID)
         if not channel:
+            print(f"⚠️ チャンネルが見つかりません: {STATUS_LOG_CHANNEL_ID}")
             return
         now_jst = get_jst_now()
         embed = discord.Embed(title=title, description=description, color=color)
