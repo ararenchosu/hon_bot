@@ -26,7 +26,7 @@ import features.voice_channel_panel as voice_panel
 import features.ranking_panel as ranking_panel
 
 # ✅ ここにメッセージを送るチャンネルIDを入れる
-STATUS_LOG_CHANNEL_ID = 123456789012345678  # ← 自分のチャンネルIDに書き換える
+STATUS_LOG_CHANNEL_ID = 1559119439981449256  # ← 自分のチャンネルIDに書き換える
 
 BOT_TOKEN = os.getenv("DISCORD_TOKEN")
 if not BOT_TOKEN:
