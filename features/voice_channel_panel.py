@@ -7,7 +7,6 @@ from core.common import is_owner
 from core.database import get_connection
 
 JST = timezone(timedelta(hours=9))
-
 # ========== 設定 ==========
 CATEGORY_ID = 1558099663922405376          # 一時通話カテゴリ
 LOG_CREATE_DELETE_CHANNEL = 1558734928366141460  # 作成・削除ログ
@@ -64,8 +63,8 @@ def get_latest_voice_panel():
             "color": int(r[4])
         }
     return None
-# ===========================================
 
+# ===========================================
 # チャンネル管理データ
 active_channels = {}
 
@@ -375,7 +374,6 @@ class VoiceCreatePanelView(discord.ui.View):
                 await m_itx.followup.send("✅ 更新・保存完了", ephemeral=True)
         await itx.response.send_modal(PanelEditModal())
 
-    # ✅ 追加：パネル更新ボタン
     @discord.ui.button(
         label="🔄 パネル更新",
         style=discord.ButtonStyle.secondary,
@@ -419,8 +417,15 @@ async def setup_panel(channel):
         embed.color.value
     )
 
-async def setup(tree: app_commands.CommandTree):
-    init_voice_panel_table()  # 初回起動時にテーブル作成
+# ✅ botを受け取って永続View登録
+async def setup(tree: app_commands.CommandTree, bot=None):
+    init_voice_panel_table()
+    
+    if bot is not None and not hasattr(bot, "_voice_panel_registered"):
+        bot.add_view(VoiceCreatePanelView())
+        bot._voice_panel_registered = True
+        print("✅ voice_panel 永続View登録完了")
+
     @tree.command(name="通話パネル設置", description="一時通話チャンネル作成パネルを設置（オーナー専用）")
     async def setup_voice_panel(itx: discord.Interaction):
         if not is_owner(itx):
