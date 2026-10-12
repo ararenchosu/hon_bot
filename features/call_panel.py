@@ -51,7 +51,7 @@ def set_call_message(text):
     conn.close()
 
 # ===========================================
-# ✅ 引数なしに変更 → botはinterから取得
+# ✅ 引数なしに変更 → 永続化対応
 class CallPanelView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
@@ -125,7 +125,6 @@ class CallPanelView(discord.ui.View):
                     description=str(self.desc_in),
                     color=0xe67e22
                 )
-                # ✅ Viewに引数を渡さない
                 await inter.response.edit_message(embed=embed, view=CallPanelView())
                 save_call_panel(
                     inter.channel_id,
@@ -170,24 +169,22 @@ class CallPanelView(discord.ui.View):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
             return
-
         latest = get_latest_call_panel()
         if not latest:
             await itx.response.send_message("⚠️ 保存されたパネルが見つかりません", ephemeral=True)
             return
-
         embed = discord.Embed(
             title=latest["title"],
             description=latest["description"],
             color=latest["color"]
         )
-        # ✅ Viewを渡さない → ボタンがそのまま残る
         await itx.response.edit_message(embed=embed)
         await itx.followup.send("✅ パネルを最新に更新しました", ephemeral=True)
 
+# ✅ botがNoneの場合を回避
 async def setup(tree, bot=None):
-    # ✅ 起動時に永続View登録
-    if not hasattr(bot, "_call_panel_registered"):
+    # 起動時に永続View登録 — botが有効なときだけ実行
+    if bot is not None and not hasattr(bot, "_call_panel_registered"):
         bot.add_view(CallPanelView())
         bot._call_panel_registered = True
         print("✅ call_panel 永続View登録完了")
@@ -202,7 +199,6 @@ async def setup(tree, bot=None):
             description="ボタンからメンバーを選択して呼び出せます。\n通知は専用チャンネルに送信されます。",
             color=0xe67e22
         )
-        # ✅ 引数なしでインスタンス生成
         await itx.response.send_message(embed=embed, view=CallPanelView())
         msg = await itx.original_response()
         save_call_panel(
