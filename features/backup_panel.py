@@ -1,227 +1,200 @@
 import discord
 from discord import app_commands
-from core.common import is_owner
 import os
 import shutil
+import time
+import subprocess
 import sys
 from datetime import datetime
+from core.common import is_owner
 
-# ✅ core/database.py と完全に同じパスに合わせる
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-DB_DIR = os.path.join(BASE_DIR, "..", "data")
-DB_PATH = os.path.join(DB_DIR, "kn_server.db")
-BACKUP_DIR = os.path.join(DB_DIR, "backups")
+BACKUP_DIR = "data_backup"
+DATA_DIR = "data"
+DB_FILE = "kn_server.db"
+POINT_FILE = "kn_points_data.json"
 
-# フォルダが無ければ作成
 os.makedirs(BACKUP_DIR, exist_ok=True)
+
+
+def get_latest_backup():
+    backups = sorted(os.listdir(BACKUP_DIR), reverse=True)
+    return backups[0] if backups else None
+
+
+def create_backup():
+    now = datetime.now().strftime("%Y%m%d_%H%M%S")
+    backup_path = os.path.join(BACKUP_DIR, f"backup_{now}")
+    os.makedirs(backup_path, exist_ok=True)
+
+    if os.path.exists(os.path.join(DATA_DIR, DB_FILE)):
+        shutil.copy2(os.path.join(DATA_DIR, DB_FILE), backup_path)
+    if os.path.exists(os.path.join(DATA_DIR, POINT_FILE)):
+        shutil.copy2(os.path.join(DATA_DIR, POINT_FILE), backup_path)
+
+    return backup_path
+
+
+def restore_backup(backup_name: str):
+    backup_path = os.path.join(BACKUP_DIR, backup_name)
+    if not os.path.exists(backup_path):
+        return False, "バックアップが見つかりません"
+
+    try:
+        if os.path.exists(os.path.join(backup_path, DB_FILE)):
+            shutil.copy2(os.path.join(backup_path, DB_FILE),
+                         os.path.join(DATA_DIR, DB_FILE))
+        if os.path.exists(os.path.join(backup_path, POINT_FILE)):
+            shutil.copy2(os.path.join(backup_path, POINT_FILE),
+                         os.path.join(DATA_DIR, POINT_FILE))
+        return True, "復元完了"
+    except Exception as e:
+        return False, str(e)
 
 
 class BackupPanelView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
+    async def check_owner(self, itx: discord.Interaction):
+        if not is_owner(itx.user):
+            await itx.response.send_message(
+                "❌ オーナーのみ実行可能です", ephemeral=True
+            )
+            return False
+        return True
+
     @discord.ui.button(
-        label="💾 データをバックアップ",
+        label="💾 今すぐバックアップ",
         style=discord.ButtonStyle.primary,
         custom_id="backup:create"
     )
     async def backup_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
-        if not is_owner(itx):
-            await itx.response.send_message("❌ このボタンはオーナー専用です", ephemeral=True)
+        if not await self.check_owner(itx):
             return
-
-        await itx.response.defer(ephemeral=True)
-
-        try:
-            # ✅ DBファイル存在確認
-            if not os.path.exists(DB_PATH):
-                await itx.followup.send(
-                    f"❌ データベースが見つかりません\n"
-                    f"探した場所：`{DB_PATH}`\n"
-                    f"先にBotを起動して `init_db()` を実行してください",
-                    ephemeral=True
-                )
-                return
-
-            # 古いバックアップを全削除
-            for f in os.listdir(BACKUP_DIR):
-                if f.endswith(".db"):
-                    os.remove(os.path.join(BACKUP_DIR, f))
-
-            # 最新1件だけ保存
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            backup_file = os.path.join(BACKUP_DIR, f"backup_{timestamp}.db")
-            shutil.copy2(DB_PATH, backup_file)
-            size_kb = os.path.getsize(backup_file) / 1024
-
-            # DMにファイル送信
-            file_for_dm = discord.File(backup_file, filename=f"backup_{timestamp}.db")
-            dm_success = False
-            try:
-                await itx.user.send(
-                    f"✅ バックアップファイル\n"
-                    f"📂 ファイル名：`backup_{timestamp}.db`\n"
-                    f"📊 サイズ：{size_kb:.1f} KB\n"
-                    f"🕒 作成日時：{timestamp}",
-                    file=file_for_dm
-                )
-                dm_success = True
-            except Exception as e:
-                print(f"DM送信エラー: {e}")
-
-            embed = discord.Embed(
-                title="✅ バックアップ完了",
-                description=f"ファイル名：`backup_{timestamp}.db`\n"
-                            f"サイズ：{size_kb:.1f} KB\n"
-                            f"保存先：`{backup_file}`\n"
-                            f"古いバックアップは削除しました（最新1件を保持）\n"
-                            f"{'✅ DMにファイルを送信しました' if dm_success else '⚠️ DM送信に失敗しましたがサーバーに保存済み'}",
-                color=0x2ECC71
-            )
-            await itx.followup.send(embed=embed, ephemeral=True)
-
-        except Exception as e:
-            await itx.followup.send(f"❌ バックアップ失敗：{e}", ephemeral=True)
-
-    @discord.ui.button(
-        label="📂 最新バックアップ確認",
-        style=discord.ButtonStyle.secondary,
-        custom_id="backup:check"
-    )
-    async def check_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
-        if not is_owner(itx):
-            await itx.response.send_message("❌ このボタンはオーナー専用です", ephemeral=True)
-            return
-
-        files = [f for f in os.listdir(BACKUP_DIR) if f.endswith(".db")]
-        if not files:
-            await itx.response.send_message("⚠️ バックアップが存在しません", ephemeral=True)
-            return
-
-        latest = sorted(files, reverse=True)[0]
-        size = os.path.getsize(os.path.join(BACKUP_DIR, latest)) / 1024
-        embed = discord.Embed(
-            title="📂 最新バックアップ",
-            description=f"ファイル名：`{latest}`\nサイズ：{size:.1f} KB",
-            color=0x3498DB
+        path = create_backup()
+        await itx.response.send_message(
+            f"✅ バックアップ作成完了\n📁 `{path}`", ephemeral=True
         )
-        await itx.response.send_message(embed=embed, ephemeral=True)
 
     @discord.ui.button(
-        label="🔄 最新を復元",
+        label="📂 バックアップ一覧",
+        style=discord.ButtonStyle.secondary,
+        custom_id="backup:list"
+    )
+    async def list_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
+        if not await self.check_owner(itx):
+            return
+        backups = sorted(os.listdir(BACKUP_DIR), reverse=True)[:5]
+        if not backups:
+            await itx.response.send_message(
+                "📋 バックアップはまだありません", ephemeral=True
+            )
+            return
+        text = "📂 最新5件のバックアップ:\n"
+        for name in backups:
+            text += f"- `{name}`\n"
+        await itx.response.send_message(text, ephemeral=True)
+
+    @discord.ui.button(
+        label="📥 最新を復元",
         style=discord.ButtonStyle.danger,
-        custom_id="backup:restore_latest"
+        custom_id="backup:restore"
     )
     async def restore_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
-        if not is_owner(itx):
-            await itx.response.send_message("❌ このボタンはオーナー専用です", ephemeral=True)
+        if not await self.check_owner(itx):
             return
-
-        files = [f for f in os.listdir(BACKUP_DIR) if f.endswith(".db")]
-        if not files:
-            await itx.response.send_message("⚠️ 復元するバックアップが存在しません", ephemeral=True)
+        latest = get_latest_backup()
+        if not latest:
+            await itx.response.send_message(
+                "❌ 復元可能なバックアップがありません", ephemeral=True
+            )
             return
-
-        latest_file = sorted(files, reverse=True)[0]
-        backup_path = os.path.join(BACKUP_DIR, latest_file)
-
-        confirm_embed = discord.Embed(
-            title="⚠️ 復元確認",
-            description=f"最新のバックアップ：`{latest_file}` を復元します\n"
-                        "現在のデータは上書きされます。よろしいですか？",
-            color=0xE74C3C
+        confirm_view = RestoreConfirmView(latest)
+        await itx.response.send_message(
+            f"⚠️ 次のバックアップから復元しますか？\n`{latest}`\n"
+            "※ 現在のデータは上書きされます",
+            view=confirm_view,
+            ephemeral=True
         )
-        await itx.response.send_message(embed=confirm_embed, view=RestoreConfirmView(latest_file, backup_path), ephemeral=True)
+
+    @discord.ui.button(
+        label="🔄 Botを再起動",
+        style=discord.ButtonStyle.success,
+        custom_id="backup:restart"
+    )
+    async def restart_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
+        if not await self.check_owner(itx):
+            return
+        await itx.response.send_message(
+            "🔄 Botを再起動します...\n"
+            "5秒後に自動的に復帰します ✅",
+            ephemeral=True
+        )
+        # 5秒後に再起動するように予約
+        import asyncio
+        async def delayed_exit():
+            await asyncio.sleep(1)  # メッセージ送信を待つ
+            await itx.client.close()
+        await delayed_exit()
 
 
 class RestoreConfirmView(discord.ui.View):
-    def __init__(self, filename, backup_path):
-        super().__init__(timeout=120)
-        self.filename = filename
-        self.backup_path = backup_path
+    def __init__(self, backup_name):
+        super().__init__(timeout=None)
+        self.backup_name = backup_name
 
     @discord.ui.button(
         label="✅ 復元を実行",
         style=discord.ButtonStyle.danger
     )
     async def do_restore(self, itx: discord.Interaction, btn: discord.ui.Button):
-        if not is_owner(itx):
-            await itx.response.send_message("❌ この操作はオーナー専用です", ephemeral=True)
-            return
-
-        try:
-            # 現在のデータを一時退避
-            shutil.copy2(DB_PATH, DB_PATH + ".current_backup")
-            # 最新バックアップから復元
-            shutil.copy2(self.backup_path, DB_PATH)
-
-            done_embed = discord.Embed(
-                title="✅ 復元完了！",
-                description=f"📂 復元元：`{self.filename}`\n"
-                            f"💾 変更前のデータは `.current_backup` に退避済み\n"
-                            f"🔽 下のボタンを押してBotを再起動してください",
-                color=0x2ECC71
+        if not is_owner(itx.user):
+            await itx.response.send_message(
+                "❌ オーナーのみ実行可能です", ephemeral=True
             )
-            await itx.response.send_message(embed=done_embed, view=RestartView(), ephemeral=True)
-
-        except Exception as e:
-            await itx.response.send_message(f"❌ 復元失敗：{e}", ephemeral=True)
+            return
+        ok, msg = restore_backup(self.backup_name)
+        if ok:
+            await itx.response.edit_message(
+                content=f"✅ {msg}\n🔄 続けて「Botを再起動」ボタンを押してください",
+                view=None
+            )
+        else:
+            await itx.response.edit_message(
+                content=f"❌ 失敗：{msg}", view=None
+            )
 
     @discord.ui.button(
         label="❌ キャンセル",
         style=discord.ButtonStyle.secondary
     )
     async def cancel(self, itx: discord.Interaction, btn: discord.ui.Button):
-        await itx.response.edit_message(content="❌ キャンセルしました", embed=None, view=None)
-
-
-class RestartView(discord.ui.View):
-    def __init__(self):
-        super().__init__(timeout=None)
-
-    @discord.ui.button(
-        label="🔄 Botを再起動",
-        style=discord.ButtonStyle.primary,
-        custom_id="backup:restart_bot"
-    )
-    async def restart_bot(self, itx: discord.Interaction, btn: discord.ui.Button):
-        if not is_owner(itx):
-            await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
-            return
-
-        await itx.response.send_message(
-            "🔄 Botを停止します。\n"
-            "自動再起動設定が有効な場合、数秒後に復帰します ✅\n"
-            "復帰したら各パネルの「🔄 パネル更新」ボタンで表示を最新にしてください！",
-            ephemeral=True
-        )
-        sys.exit(0)
+        await itx.response.edit_message(content="✅ キャンセルしました", view=None)
 
 
 async def setup(tree: app_commands.CommandTree):
-    bot = tree.client
-    bot.add_view(BackupPanelView())
-    bot.add_view(RestartView())
-
-    @tree.command(
-        name="バックアップパネル",
-        description="データのバックアップ・復元パネル（オーナー専用）"
-    )
-    @app_commands.check(is_owner)
+    @tree.command(name="バックアップパネル", description="バックアップ管理パネルを表示")
     async def backup_panel_cmd(itx: discord.Interaction):
+        if not is_owner(itx.user):
+            await itx.response.send_message(
+                "❌ オーナーのみ実行可能です", ephemeral=True
+            )
+            return
         embed = discord.Embed(
-            title="💾 データバックアップパネル",
-            description="""
-🔒 全てのボタンはオーナーのみ操作可能
-
-💾 バックアップ → 最新を保存 & ファイルをDM送信
-📂 確認 → 保存されている最新ファイルを表示
-🔄 最新を復元 → 最新を一発で復元 → 再起動ボタンが表示
-
-⚠️ 復元後は「🔄 Botを再起動」を押してください
-⚠️ 最新1件のみ自動保持（古いものは自動削除）
-            """,
-            color=0xF39C12
+            title="📦 データバックアップ・管理",
+            description=(
+                "💾 今すぐバックアップ → 現在のデータを保存\n"
+                "📂 バックアップ一覧 → 過去の履歴を表示\n"
+                "📥 最新を復元 → 最新のバックアップからデータを戻す\n"
+                "🔄 Botを再起動 → Botを再起動（自動復帰）\n\n"
+                "⚠️ 復元後は必ず再起動してください"
+            ),
+            color=0x2ECC71
+        )
+        latest = get_latest_backup()
+        embed.add_field(
+            name="📋 最新バックアップ",
+            value=f"`{latest}`" if latest else "なし",
+            inline=False
         )
         await itx.response.send_message(embed=embed, view=BackupPanelView())
-        await itx.followup.send("✅ パネルを表示しました", ephemeral=True)
