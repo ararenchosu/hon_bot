@@ -3,7 +3,7 @@ from discord import app_commands
 from core.common import is_owner
 from core.database import get_connection
 
-# ========== 追加：パネル保存/読み込み ==========
+# ========== パネル保存/読み込み ==========
 def save_auth_panel(channel_id: int, message_id: int, title: str, description: str, color: int):
     """認証パネル内容を保存（設置時・編集時に自動実行）"""
     conn = get_connection()
@@ -16,7 +16,7 @@ def save_auth_panel(channel_id: int, message_id: int, title: str, description: s
     conn.close()
 
 def get_latest_auth_panel():
-    """一番新しい保存内容を取得（編集時の初期値に使用）"""
+    """一番新しい保存内容を取得（編集時・更新時に使用）"""
     conn = get_connection()
     cur = conn.cursor()
     cur.execute("""
@@ -59,7 +59,7 @@ class AuthPanelView(discord.ui.View):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
             return
-        # ✅ 最新の内容を初期値に表示
+        # 最新の内容を初期値に表示
         latest = get_latest_auth_panel()
         default_title = latest["title"] if latest else "🔐 サーバー認証"
         default_desc = latest["description"] if latest else "⬇️のボタンを押して「鯖メン」ロールを取得してください。\n取得後鯖全体を閲覧できます。"
@@ -77,7 +77,7 @@ class AuthPanelView(discord.ui.View):
                     color=0x2ecc71
                 )
                 await inter.response.edit_message(embed=embed, view=AuthPanelView())
-                # ✅ 編集したら自動保存
+                # 編集したら自動保存
                 save_auth_panel(
                     inter.channel_id,
                     inter.message.id,
@@ -86,7 +86,29 @@ class AuthPanelView(discord.ui.View):
                     0x2ecc71
                 )
                 await inter.followup.send("✅ 更新・保存完了", ephemeral=True)
+
         await itx.response.send_modal(AuthEditModal())
+
+    # ✅ 追加：パネル更新ボタン
+    @discord.ui.button(label="🔄 パネル更新", style=discord.ButtonStyle.secondary, custom_id="auth:refresh")
+    async def refresh_panel(self, itx: discord.Interaction, btn: discord.ui.Button):
+        if not is_owner(itx):
+            await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
+            return
+        
+        latest = get_latest_auth_panel()
+        if not latest:
+            await itx.response.send_message("⚠️ 保存されたパネルが見つかりません", ephemeral=True)
+            return
+        
+        embed = discord.Embed(
+            title=latest["title"],
+            description=latest["description"],
+            color=latest["color"]
+        )
+        await itx.response.edit_message(embed=embed)
+        await itx.followup.send("✅ パネルを最新に更新しました", ephemeral=True)
+
 
 async def setup(tree):
     @tree.command(name="認証パネル設置", description="鯖認証パネル設置（オーナー専用）")
@@ -100,7 +122,7 @@ async def setup(tree):
             color=0x2ecc71
         )
         await itx.response.send_message(embed=embed, view=AuthPanelView())
-        # ✅ 新規設置時に自動保存
+        # 新規設置時に自動保存
         msg = await itx.original_response()
         save_auth_panel(
             itx.channel_id,
