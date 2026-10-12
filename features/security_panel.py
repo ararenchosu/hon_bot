@@ -7,7 +7,7 @@ import asyncio
 import re
 
 JST = timezone(timedelta(hours=9))
-MOD_LOG_CHANNEL_ID = None  # ログ用チャンネルIDがあれば記入
+MOD_LOG_CHANNEL_ID = 1559306800346562672  # ログ用チャンネルIDがあれば記入
 MUTE_ROLE_NAME = "ミュート"
 TARGET_CHANNEL_ID = 1558099501305176095
 
@@ -243,7 +243,7 @@ class ConfirmModal(discord.ui.Modal):
     async def on_submit(self, itx):
         await self.callback(itx, self.reason_in.value)
 
-# ========== 共通：ユーザー選択View（2.3.x対応） ==========
+# ========== 共通：ユーザー選択View ==========
 class SelectUserView(discord.ui.View):
     def __init__(self, callback):
         super().__init__(timeout=120)
@@ -275,6 +275,7 @@ class LockChannelView(discord.ui.View):
         if not target_ch:
             await itx.response.send_message("❌ 管理対象チャンネルが見つかりません", ephemeral=True)
             return
+
         async def _lock(itx, reason):
             perms = target_ch.overwrites_for(itx.guild.default_role)
             perms.send_messages = False
@@ -286,6 +287,7 @@ class LockChannelView(discord.ui.View):
                 content=f"✅ {target_ch.mention} をロックしました\n理由：{reason}",
                 view=UnlockChannelView()
             )
+
         await itx.response.send_modal(ConfirmModal("チャンネルロック", _lock))
 
 class UnlockChannelView(discord.ui.View):
@@ -301,6 +303,7 @@ class UnlockChannelView(discord.ui.View):
         if not target_ch:
             await itx.response.send_message("❌ 管理対象チャンネルが見つかりません", ephemeral=True)
             return
+
         async def _unlock(itx, reason):
             perms = target_ch.overwrites_for(itx.guild.default_role)
             perms.send_messages = None
@@ -309,6 +312,7 @@ class UnlockChannelView(discord.ui.View):
             await send_security_log(itx.guild, "🔓 チャンネル解除",
                 f"チャンネル：{target_ch.mention}\n実行者：{itx.user.mention}\n理由：{reason}", 0x2ECC71)
             await itx.response.edit_message(content=f"✅ {target_ch.mention} を解除しました", view=None)
+
         await itx.response.send_modal(ConfirmModal("チャンネル解除", _unlock))
 
 # ========== ② 時間指定ミュート ==========
@@ -350,6 +354,7 @@ class MuteDurationView(discord.ui.View):
 
     async def _mute(self, itx, hours):
         end_time = (datetime.now(JST) + timedelta(hours=hours)).isoformat() if hours else None
+
         async def _confirm(itx, reason):
             role = discord.utils.get(itx.guild.roles, name=MUTE_ROLE_NAME)
             if not role:
@@ -369,6 +374,7 @@ class MuteDurationView(discord.ui.View):
             await send_security_log(itx.guild, "🔇 ミュート実行",
                 f"対象：{self.target.mention}\n実行者：{itx.user.mention}\n理由：{reason}\n期間：{f'{hours}時間' if hours else '無期限'}", 0xF79E1B)
             await itx.response.edit_message(content=f"✅ {self.target.mention} をミュートしました", view=None)
+
         await itx.response.send_modal(ConfirmModal("ミュート実行", _confirm))
 
 # ========== ③ 期限付きBAN ==========
@@ -408,6 +414,7 @@ class TempBanDurationView(discord.ui.View):
 
     async def _ban(self, itx, days):
         end_time = (datetime.now(JST) + timedelta(days=days)).isoformat() if days else None
+
         async def _confirm(itx, reason):
             try:
                 await itx.guild.ban(self.target, reason=reason, delete_message_days=0)
@@ -427,6 +434,7 @@ class TempBanDurationView(discord.ui.View):
             await send_security_log(itx.guild, "🚫 BAN実行",
                 f"対象：{self.target.mention}\n実行者：{itx.user.mention}\n理由：{reason}\n期間：{f'{days}日' if days else '無期限'}", 0xE74C3C)
             await itx.response.edit_message(content=f"✅ {self.target.mention} をBANしました", view=None)
+
         await itx.response.send_modal(ConfirmModal("期限付きBAN", _confirm))
 
 # ========== ④ スパム一括削除 ==========
@@ -486,6 +494,7 @@ class EmergencyLockView(discord.ui.View):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用", ephemeral=True)
             return
+
         async def _lock(itx, reason):
             perms = itx.guild.default_role.permissions
             perms.send_messages = False
@@ -498,6 +507,7 @@ class EmergencyLockView(discord.ui.View):
                 content=f"✅ サーバーを封鎖しました\n理由：{reason}",
                 view=EmergencyUnlockView()
             )
+
         await itx.response.send_modal(ConfirmModal("緊急封鎖", _lock))
 
 class EmergencyUnlockView(discord.ui.View):
@@ -509,6 +519,7 @@ class EmergencyUnlockView(discord.ui.View):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用", ephemeral=True)
             return
+
         async def _unlock(itx, reason):
             perms = itx.guild.default_role.permissions
             perms.send_messages = True
@@ -518,6 +529,7 @@ class EmergencyUnlockView(discord.ui.View):
             await send_security_log(itx.guild, "✅ 緊急封鎖解除",
                 f"実行者：{itx.user.mention}\n理由：{reason}", 0x2ECC71)
             await itx.response.edit_message(content="✅ 通常運用に戻しました", view=None)
+
         await itx.response.send_modal(ConfirmModal("封鎖解除", _unlock))
 
 # ========== ⑥ 禁止ワード管理画面 ==========
@@ -870,13 +882,12 @@ async def check_link_restriction(message: discord.Message):
     await send_security_log(message.guild, "🔗 リンク制限",
         f"ユーザー：{message.author.mention}\nチャンネル：{message.channel.mention}\n検知リンク：\n{chr(10).join(f'・{url}' for url in external_links[:5])}", 0xE67E22)
 
-# ========== セットアップ ==========
-async def setup(tree: app_commands.CommandTree):
+# ========== セットアップ（引数統一版） ==========
+async def setup(tree: app_commands.CommandTree, bot=None):
     init_security_tables()
-    bot = tree.client
     
     # ✅ 永続View一括登録（重複防止）
-    if not hasattr(bot, "_security_views_registered"):
+    if bot is not None and not hasattr(bot, "_security_views_registered"):
         bot.add_view(SecurityMainView())
         bot.add_view(ForbiddenWordView())
         bot.add_view(LockChannelView())
@@ -884,6 +895,7 @@ async def setup(tree: app_commands.CommandTree):
         bot.add_view(EmergencyLockView())
         bot.add_view(EmergencyUnlockView())
         bot._security_views_registered = True
+        print("✅ security_panel 永続View登録完了")
     
     @tree.command(name="治安パネル設置", description="治安管理パネル（オーナー専用）")
     @app_commands.check(is_owner)
