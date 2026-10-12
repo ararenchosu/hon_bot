@@ -5,12 +5,32 @@ import shutil
 from datetime import datetime
 from core.common import is_owner
 
+# ✅ ステータス通知用チャンネルID（main.pyと同じIDにする）
+STATUS_LOG_CHANNEL_ID = 1559119439981449256  # ← 自分のチャンネルIDに書き換え
+
 BACKUP_DIR = "data_backup"
 DATA_DIR = "data"
 DB_FILE = "kn_server.db"
 POINT_FILE = "kn_points_data.json"
 
 os.makedirs(BACKUP_DIR, exist_ok=True)
+
+# ========== 共通：ステータス通知送信 ==========
+async def send_status_embed(client, title: str, description: str, color: int):
+    """ステータスチャンネルに通知を送る"""
+    if not STATUS_LOG_CHANNEL_ID or STATUS_LOG_CHANNEL_ID == 123456789012345678:
+        return
+    try:
+        channel = client.get_channel(STATUS_LOG_CHANNEL_ID)
+        if not channel:
+            return
+        embed = discord.Embed(title=title, description=description, color=color)
+        embed.set_footer(
+            text=f"時刻：{discord.utils.format_dt(discord.utils.utcnow(), 'F')}"
+        )
+        await channel.send(embed=embed)
+    except Exception as e:
+        print(f"⚠️ 通知送信エラー: {e}")
 
 def get_latest_backup():
     backups = sorted(os.listdir(BACKUP_DIR), reverse=True)
@@ -80,6 +100,13 @@ class BackupPanelView(discord.ui.View):
             f"✅ 最新バックアップを保存（前回分は上書き）\n📁 `{path}`", 
             ephemeral=True
         )
+        # ✅ バックアップ実行通知
+        await send_status_embed(
+            itx.client,
+            title="💾 バックアップ実行",
+            description=f"オーナーによりバックアップが保存されました。\n`{path}`",
+            color=0x3498DB
+        )
 
     @discord.ui.button(
         label="📂 保存状況を確認",
@@ -134,6 +161,13 @@ class BackupPanelView(discord.ui.View):
             "🔄 Botを再起動します...\n5秒後に自動的に復帰します ✅",
             ephemeral=True
         )
+        # ✅ 再起動実行通知
+        await send_status_embed(
+            itx.client,
+            title="🔄 再起動実行",
+            description="オーナーにより再起動が実行されました。",
+            color=0xF39C12
+        )
         import asyncio
         async def delayed_exit():
             await asyncio.sleep(1)
@@ -144,7 +178,7 @@ class BackupPanelView(discord.ui.View):
         label="🛑 Botを停止",
         style=discord.ButtonStyle.danger,
         custom_id="backup:shutdown",
-        row=1  # 下段に表示
+        row=1
     )
     async def shutdown_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
         if not await self.check_owner(itx):
@@ -174,6 +208,13 @@ class ShutdownConfirmView(discord.ui.View):
         await itx.response.edit_message(
             content="🛑 Botを停止しました\nお疲れ様でした ✨",
             view=None
+        )
+        # ✅ 停止実行通知
+        await send_status_embed(
+            itx.client,
+            title="🛑 Bot停止",
+            description="オーナーによりBotが停止されました。",
+            color=0xE74C3C
         )
         import asyncio
         async def delayed_shutdown():
@@ -208,6 +249,13 @@ class RestoreConfirmView(discord.ui.View):
             await itx.response.edit_message(
                 content=f"✅ {msg}\n🔄 続けて「Botを再起動」ボタンを押してください",
                 view=None
+            )
+            # ✅ 復元完了通知
+            await send_status_embed(
+                itx.client,
+                title="📥 復元実行",
+                description=f"オーナーによりバックアップから復元されました。\n`{self.backup_name}`",
+                color=0x9B59B6
             )
         else:
             await itx.response.edit_message(
