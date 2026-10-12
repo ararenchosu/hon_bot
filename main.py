@@ -96,7 +96,23 @@ async def on_ready():
     
     last_reason = get_and_clear_reason()
     
-    # ========== 永続View一括登録 ==========
+    # ========== 🔍 永続化チェッカー ==========
+    def check_view_no_args(view_class, view_name: str):
+        """引数なしでインスタンス化できるか検証 → 問題あれば警告"""
+        try:
+            instance = view_class()
+            if instance.timeout is not None:
+                print(f"   ⚠️ 【{view_name}】: timeout が None になっていません → 再起動後に動かない可能性あり")
+            return instance
+        except TypeError as e:
+            print(f"   ❌ 【{view_name}】: 引数が必要なため永続化不可！→ {e}")
+            print(f"      → 修正法: __init__から引数を削除し、inter.client から bot を取得してください")
+            return None
+    
+    # ========== View登録 ==========
+    print("\n🔍 View 永続化チェック & 登録中...")
+    all_ok = True
+    
     try:
         from features.lottery_panel import LotteryPanelView, PointCheckPanelView
         from features.login_bonus import LoginBonusPanelView
@@ -114,44 +130,55 @@ async def on_ready():
         from features.backup_panel import BackupPanelView, RestoreConfirmView
         from features.command_list_panel import CommandListView
         from features import othello_panel, call_panel, auth_panel
-        from features import role_panel, revoke_panel, voice_channel_panel, ranking_panel
+        from features import role_panel, revoke_panel, voice_panel, ranking_panel
         
-        # ✅ 引数なしで登録 → 永続化
-        bot.add_view(LotteryPanelView())
-        bot.add_view(PointCheckPanelView())
-        bot.add_view(LoginBonusPanelView())
-        bot.add_view(SlotPanelView())
-        bot.add_view(BlackjackPanelView())
-        bot.add_view(HighLowPanelView())
-        bot.add_view(PointAdminView())
-        bot.add_view(ModerationPanelView())
-        bot.add_view(SecurityMainView())
-        bot.add_view(ForbiddenWordView())
-        bot.add_view(LockChannelView())
-        bot.add_view(UnlockChannelView())
-        bot.add_view(EmergencyLockView())
-        bot.add_view(EmergencyUnlockView())
-        bot.add_view(InvitePanelView())
-        bot.add_view(InviteDurationView())
-        bot.add_view(BackupPanelView())
-        bot.add_view(RestoreConfirmView())  # ✅ 追加
+        views_to_register = [
+            (LotteryPanelView, "LotteryPanelView"),
+            (PointCheckPanelView, "PointCheckPanelView"),
+            (LoginBonusPanelView, "LoginBonusPanelView"),
+            (SlotPanelView, "SlotPanelView"),
+            (BlackjackPanelView, "BlackjackPanelView"),
+            (HighLowPanelView, "HighLowPanelView"),
+            (PointAdminView, "PointAdminView"),
+            (ModerationPanelView, "ModerationPanelView"),
+            (SecurityMainView, "SecurityMainView"),
+            (ForbiddenWordView, "ForbiddenWordView"),
+            (LockChannelView, "LockChannelView"),
+            (UnlockChannelView, "UnlockChannelView"),
+            (EmergencyLockView, "EmergencyLockView"),
+            (EmergencyUnlockView, "EmergencyUnlockView"),
+            (InvitePanelView, "InvitePanelView"),
+            (InviteDurationView, "InviteDurationView"),
+            (BackupPanelView, "BackupPanelView"),
+            (RestoreConfirmView, "RestoreConfirmView"),
+            (othello_panel.OthelloPanelView, "OthelloPanelView"),
+            (call_panel.CallPanelView, "CallPanelView"),
+            (auth_panel.AuthPanelView, "AuthPanelView"),
+            (role_panel.RoleSelectPanelView, "RoleSelectPanelView"),
+            (revoke_panel.RoleRevokePanelView, "RoleRevokePanelView"),
+            (voice_panel.VoiceCreatePanelView, "VoiceCreatePanelView"),
+            (ranking_panel.RankingPanelView, "RankingPanelView"),
+        ]
+        
+        for view_cls, name in views_to_register:
+            instance = check_view_no_args(view_cls, name)
+            if instance:
+                bot.add_view(instance)
+                print(f"   ✅ {name}")
+            else:
+                all_ok = False
         
         clv = CommandListView()
         clv.tree = tree
         bot.add_view(clv)
+        print("   ✅ CommandListView")
         
-        # ✅ 引数を渡さない（各ファイル内でbot取得するよう修正済み前提）
-        bot.add_view(othello_panel.OthelloPanelView())
-        bot.add_view(call_panel.CallPanelView())
-        bot.add_view(auth_panel.AuthPanelView())
-        bot.add_view(role_panel.RoleSelectPanelView())
-        bot.add_view(revoke_panel.RoleRevokePanelView())
-        bot.add_view(voice_panel.VoiceCreatePanelView())
-        bot.add_view(ranking_panel.RankingPanelView())
-        
-        print("✅ 全View永続登録完了")
+        if all_ok:
+            print("✅ 全View 永続登録完了 — 再起動後もボタン動作保証 ✨")
+        else:
+            print("⚠️ 上記の❌ を修正して再起動してください")
     except Exception as e:
-        print(f"⚠️ View登録エラー: {e}")
+        print(f"❌ View登録エラー: {e}")
         import traceback
         traceback.print_exc()
     
@@ -170,7 +197,7 @@ async def on_ready():
     await invite_link.setup(tree); print("  ✅ invite_link")
     await backup_panel.setup(tree); print("  ✅ backup_panel")
     await command_list_panel.setup(tree); print("  ✅ command_list_panel")
-    await othello.setup(tree)
+    await othello.setup(tree); print("  ✅ othello")
     await othello_panel.setup(tree); print("  ✅ othello_panel")
     await auth_panel.setup(tree); print("  ✅ auth_panel")
     await role_panel.setup(tree); print("  ✅ role_panel")
@@ -191,14 +218,20 @@ async def on_ready():
     print("✅ ランキング自動更新タスク起動完了")
     
     if last_reason == "restart_button":
-        await send_status_embed(bot, "✅ 再起動完了",
-            "ボタン操作により再起動されました。\n全パネル復旧済みです✨", 0xF39C12)
+        await send_status_embed(
+            bot, "✅ 再起動完了",
+            "ボタン操作により再起動されました。\n全パネル復旧済みです✨",
+            0xF39C12
+        )
     else:
-        await send_status_embed(bot, "🔄 再起動完了",
-            "機能追加・更新により再起動しました。\n全パネル復旧済みです✨", 0x9B59B6)
+        await send_status_embed(
+            bot, "🔄 起動完了",
+            "機能追加・更新により起動しました。\n全パネル復旧済みです✨",
+            0x9B59B6
+        )
     
     print("✅ 起動通知送信完了")
-    print("\n✅ 起動完了 — 全パネル永続化対応済み\n")
+    print("\n✅ 起動完了 — 永続化チェック機能搭載済み\n")
 
 @bot.event
 async def on_close():
