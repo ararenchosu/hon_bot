@@ -6,14 +6,15 @@ from core.database import init_db
 from features.lottery_panel import setup as lottery_setup
 from features.login_bonus import setup as login_bonus_setup
 from features.slots_panel import setup as slots_setup
-from features.blackjack_panel import setup as bj_setup
-from features.highlow_panel import setup as hl_setup
+from features.blackjack_panel import setup as blackjack_setup
+from features.highlow_panel import setup as highlow_setup
 from features.point_admin_panel import setup as point_admin_setup
 import features.embed_sender as embed_sender
 import features.clear_messages as clear_messages
 import features.moderation_panel as moderation_panel
 import features.security_panel as security_panel
-import features.invite_link as invite_link  # ✅ 招待リンク
+import features.invite_link as invite_link
+import features.backup_panel as backup_panel  # ✅ バックアップ追加
 import features.othello as othello
 import features.othello_panel as othello_panel
 import features.auth_panel as auth_panel
@@ -38,6 +39,7 @@ intents.members = True
 bot = discord.Client(intents=intents)
 tree = app_commands.CommandTree(bot)
 
+
 async def restore_panel(channel_id, message_id, ViewClass, *view_args):
     try:
         channel = bot.get_channel(channel_id)
@@ -51,6 +53,7 @@ async def restore_panel(channel_id, message_id, ViewClass, *view_args):
         print(f"⚠️ 復元失敗: {e}")
         return False
 
+
 # ========== 監視イベント ==========
 @bot.event
 async def on_message(message):
@@ -58,11 +61,12 @@ async def on_message(message):
         await security_panel.check_forbidden_words(message)
         await security_panel.check_link_restriction(message)
 
+
 # ========== 起動処理 ==========
 @bot.event
 async def on_ready():
     print(f"\n✅ ログイン：{bot.user}")
-    
+
     try:
         from features.lottery_panel import LotteryPanelView, PointCheckPanelView
         from features.login_bonus import LoginBonusPanelView
@@ -76,8 +80,9 @@ async def on_ready():
             LockChannelView, UnlockChannelView,
             EmergencyLockView, EmergencyUnlockView
         )
-        from features.invite_link import InvitePanelView, InviteDurationView  # ✅ 招待リンク
-        
+        from features.invite_link import InvitePanelView, InviteDurationView
+        from features.backup_panel import BackupPanelView  # ✅ バックアップ
+
         bot.add_view(LotteryPanelView())
         bot.add_view(PointCheckPanelView())
         bot.add_view(LoginBonusPanelView())
@@ -92,8 +97,9 @@ async def on_ready():
         bot.add_view(UnlockChannelView())
         bot.add_view(EmergencyLockView())
         bot.add_view(EmergencyUnlockView())
-        bot.add_view(InvitePanelView())       # ✅ 招待リンク
-        bot.add_view(InviteDurationView())    # ✅ 招待リンク
+        bot.add_view(InvitePanelView())
+        bot.add_view(InviteDurationView())
+        bot.add_view(BackupPanelView())  # ✅ バックアップ登録
         bot.add_view(othello_panel.OthelloPanelView())
         bot.add_view(call_panel.CallPanelView(bot))
         bot.add_view(auth_panel.AuthPanelView())
@@ -104,7 +110,7 @@ async def on_ready():
         print("✅ 全View登録完了")
     except Exception as e:
         print(f"⚠️ View登録エラー: {e}")
-    
+
     print("\n🔄 コマンド登録中...")
     await lottery_setup(tree)
     print("  ✅ lottery_panel")
@@ -112,9 +118,9 @@ async def on_ready():
     print("  ✅ login_bonus")
     await slots_setup(tree)
     print("  ✅ slots_panel")
-    await bj_setup(tree)
+    await blackjack_setup(tree)
     print("  ✅ blackjack_panel")
-    await hl_setup(tree)
+    await highlow_setup(tree)
     print("  ✅ highlow_panel")
     await point_admin_setup(tree)
     print("  ✅ point_admin_panel")
@@ -126,8 +132,10 @@ async def on_ready():
     print("  ✅ moderation_panel")
     await security_panel.setup(tree)
     print("  ✅ security_panel")
-    await invite_link.setup(tree)  # ✅ 招待リンク
+    await invite_link.setup(tree)
     print("  ✅ invite_link → /招待リンクパネル")
+    await backup_panel.setup(tree)  # ✅ バックアップコマンド
+    print("  ✅ backup_panel → /バックアップパネル")
     await othello.setup(tree)
     await othello_panel.setup(tree)
     await auth_panel.setup(tree)
@@ -140,21 +148,21 @@ async def on_ready():
     await ranking_panel.setup(tree)
     print("  ✅ ranking_panel")
     print("✅ 全コマンド登録完了")
-    
+
     print("\n📋 登録済みコマンド一覧：")
     for cmd in tree.get_commands():
         print(f"   /{cmd.name}")
-    
+
     print("\n🔄 グローバル同期中...")
     synced = await tree.sync()
     print(f"✅ 同期完了！合計 {len(synced)} 件")
     for cmd in synced:
         print(f"   /{cmd.name}")
-    
+
     print("\n🔄 自動更新タスク起動中...")
     asyncio.create_task(ranking_panel.auto_update_task(bot))
     print("✅ ランキング自動更新タスク起動完了")
-    
+
     print("\n🔄 パネル復元中...")
     call_saved = call_panel.get_latest_call_panel()
     if call_saved:
@@ -169,5 +177,6 @@ async def on_ready():
     if role_revoke_saved:
         await restore_panel(role_revoke_saved["channel_id"], role_revoke_saved["message_id"], revoke_panel.RoleRevokePanelView)
     print("✅ 起動完了\n")
+
 
 bot.run(BOT_TOKEN)
