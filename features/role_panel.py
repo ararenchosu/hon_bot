@@ -120,6 +120,7 @@ def remove_selectable_role(guild_id, role_id):
     conn.commit()
     conn.close()
 
+# ===========================================
 class RoleSelectPanelView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)  # ✅ 永久有効
@@ -215,6 +216,7 @@ class RoleSelectPanelView(discord.ui.View):
                 label="説明", style=discord.TextStyle.long,
                 default=default_desc
             )
+
             async def on_submit(self, inter: discord.Interaction):
                 embed = discord.Embed(
                     title=str(self.title_in),
@@ -295,10 +297,13 @@ class RoleSelectPanelView(discord.ui.View):
         await itx.response.edit_message(embed=embed)
         await itx.followup.send("✅ パネルを最新に更新しました", ephemeral=True)
 
-async def setup(tree: app_commands.CommandTree):
+
+async def setup(tree, bot=None):
     init_role_give_table()
-    bot = tree.client
-    bot.add_view(RoleSelectPanelView())  # ✅ 永久登録
+    if bot is not None and not hasattr(bot, "_role_panel_registered"):
+        bot.add_view(RoleSelectPanelView())
+        bot._role_panel_registered = True
+        print("✅ role_panel 永続View登録完了")
 
     @tree.command(name="ロール付与パネル設置", description="選択式ロールパネル設置（オーナー専用）")
     async def cmd_role_panel(itx: discord.Interaction):
