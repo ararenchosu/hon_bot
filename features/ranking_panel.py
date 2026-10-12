@@ -106,7 +106,7 @@ def build_ranking_embed(title, description, guild: discord.Guild):
 # ========== View ==========
 class RankingPanelView(discord.ui.View):
     def __init__(self):
-        super().__init__(timeout=None)
+        super().__init__(timeout=None)  # ✅ 永久有効
 
     @discord.ui.button(label="✏️ 内容編集", style=discord.ButtonStyle.secondary, custom_id="ranking:edit")
     async def edit_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
@@ -159,19 +159,21 @@ class RankingPanelView(discord.ui.View):
 # ========== 自動更新タスク ==========
 async def auto_update_task(client: discord.Client):
     await client.wait_until_ready()
-    while True:
+    while not client.is_closed():
         now = datetime.now(JST)
         target = now.replace(hour=23, minute=59, second=0, microsecond=0)
         if now >= target:
             target += timedelta(days=1)
         wait = (target - datetime.now(JST)).total_seconds()
         await asyncio.sleep(wait)
+
         from core.database import get_connection
         conn = get_connection()
         cur = conn.cursor()
         cur.execute(f"SELECT channel_id, message_id, title, description FROM {PANEL_TABLE}")
         panels = cur.fetchall()
         conn.close()
+
         for ch_id, msg_id, title, desc in panels:
             try:
                 channel = client.get_channel(int(ch_id))
@@ -182,6 +184,7 @@ async def auto_update_task(client: discord.Client):
                 await msg.edit(embed=embed)
             except Exception as e:
                 print(f"⚠️ ランキング自動更新エラー: {e}")
+
         await asyncio.sleep(60)
 
 # ========== セットアップ ==========
@@ -195,6 +198,14 @@ async def setup_panel(channel):
 
 async def setup(tree: app_commands.CommandTree):
     init_db()
+    bot = tree.client
+    bot.add_view(RankingPanelView())  # ✅ 永久登録
+
+    # ✅ 自動更新タスク起動（重複防止）
+    if not hasattr(bot, "_ranking_task_started"):
+        bot._ranking_task_started = True
+        bot.loop.create_task(auto_update_task(bot))
+
     @tree.command(name="ポイントランキングパネル設置", description="ポイントランキングパネルを設置（オーナー専用）")
     async def cmd(itx: discord.Interaction):
         if not is_owner(itx):
