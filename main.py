@@ -48,13 +48,14 @@ tree = app_commands.CommandTree(bot)
 def get_jst_now():
     return datetime.now(JST)
 
-async def send_status_embed(title: str, description: str, color: int):
+# ✅ backup_panel と同じ引数形式に統一
+async def send_status_embed(client, title: str, description: str, color: int):
     if not STATUS_LOG_CHANNEL_ID:
         return
     try:
-        channel = bot.get_channel(STATUS_LOG_CHANNEL_ID)
+        channel = client.get_channel(STATUS_LOG_CHANNEL_ID)
         if not channel:
-            print(f"⚠️ チャンネルが見つかりません")
+            print(f"⚠️ チャンネルが見つかりません: {STATUS_LOG_CHANNEL_ID}")
             return
         now_jst = get_jst_now()
         embed = discord.Embed(title=title, description=description, color=color)
@@ -170,7 +171,7 @@ async def on_ready():
     await invite_link.setup(tree)
     print("  ✅ invite_link")
     await backup_panel.setup(tree)
-    print("  ✅ backup_panel")
+    print("  ✅ backup_panel（自動バックアップタスク起動）")
     await command_list_panel.setup(tree)
     print("  ✅ command_list_panel コマンド一覧")
     await othello.setup(tree)
@@ -203,12 +204,14 @@ async def on_ready():
     
     if last_reason == "restart_button":
         await send_status_embed(
+            bot,
             title="✅ 再起動完了",
             description="ボタン操作により再起動されました。\n入退室ログを監視中…",
             color=0xF39C12
         )
     else:
         await send_status_embed(
+            bot,
             title="🔄 機能追加又は.py更新により再起動",
             description="機能追加又は.py更新により再起動が実行されました。\n入退室ログを監視中…",
             color=0x9B59B6
