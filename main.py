@@ -27,6 +27,7 @@ import features.ranking_panel as ranking_panel
 
 # ✅ 通知先チャンネル（固定）
 STATUS_LOG_CHANNEL_ID = 1559119439981449256
+REASON_FILE = ".last_stop_reason"
 
 BOT_TOKEN = os.getenv("DISCORD_TOKEN")
 if not BOT_TOKEN:
@@ -59,6 +60,28 @@ async def send_status_embed(title: str, description: str, color: int):
     except Exception as e:
         print(f"⚠️ 通知送信エラー: {e}")
 
+def clear_reason_file():
+    """理由ファイルを削除"""
+    if os.path.exists(REASON_FILE):
+        try:
+            os.remove(REASON_FILE)
+        except:
+            pass
+
+def set_reason(reason: str):
+    """停止理由を記録"""
+    with open(REASON_FILE, "w", encoding="utf-8") as f:
+        f.write(reason)
+
+def get_and_clear_reason():
+    """理由を読み取って削除"""
+    if os.path.exists(REASON_FILE):
+        with open(REASON_FILE, "r", encoding="utf-8") as f:
+            reason = f.read().strip()
+        clear_reason_file()
+        return reason
+    return None
+
 # ========== 監視イベント ==========
 @bot.event
 async def on_message(message):
@@ -66,10 +89,14 @@ async def on_message(message):
         await security_panel.check_forbidden_words(message)
         await security_panel.check_link_restriction(message)
 
-# ========== 起動時：種類を判別して通知 ==========
+# ========== 起動時：理由を判別して通知 ==========
 @bot.event
 async def on_ready():
     print(f"\n✅ ログイン：{bot.user}")
+    
+    # 前回の停止理由を取得
+    last_reason = get_and_clear_reason()
+    
     try:
         from features.lottery_panel import LotteryPanelView, PointCheckPanelView
         from features.login_bonus import LoginBonusPanelView
@@ -166,34 +193,26 @@ async def on_ready():
     asyncio.create_task(ranking_panel.auto_update_task(bot))
     print("✅ ランキング自動更新タスク起動完了")
 
-    # ✅ 起動通知：前回の停止理由に応じてメッセージを切り替え
-    import os
-    reason_file = ".last_stop_reason"
-    if os.path.exists(reason_file):
-        with open(reason_file, "r", encoding="utf-8") as f:
-            last_reason = f.read().strip()
-        os.remove(reason_file)  # 読み取ったら削除
-        
-        if last_reason == "update":
-            await send_status_embed(
-                title="✅ アップデート完了・自動再起動",
-                description="ファイル更新により一時停止していました。\nアップデート後、Botが自動的に起動されました。",
-                color=0x9B59B6
-            )
-        elif last_reason == "restart_button":
-            await send_status_embed(
-                title="✅ 再起動完了",
-                description="ボタン操作により再起動されました。",
-                color=0xF39C12
-            )
-        else:
-            await send_status_embed(
-                title="✅ 再起動・起動完了",
-                description="Botが正常に起動しました。",
-                color=0x2ECC71
-            )
+    # ✅ 起動通知：理由に応じて切り替え
+    if last_reason == "update":
+        await send_status_embed(
+            title="✅ アップデート完了・自動再起動",
+            description="ファイル更新により一時停止していました。\nアップデート後、Botが自動的に起動されました。",
+            color=0x9B59B6
+        )
+    elif last_reason == "restart_button":
+        await send_status_embed(
+            title="✅ 再起動完了",
+            description="ボタン操作により再起動されました。",
+            color=0xF39C12
+        )
+    elif last_reason == "fadehost_stop":
+        await send_status_embed(
+            title="✅ FadeHostからの起動",
+            description="管理画面からBotが起動されました。",
+            color=0x2ECC71
+        )
     else:
-        # 初回起動または手動起動
         await send_status_embed(
             title="✅ Bot起動",
             description="Botが正常に起動しました。",
@@ -203,20 +222,20 @@ async def on_ready():
     print("✅ 起動通知送信完了")
     print("\n✅ 起動完了\n")
 
-# ========== 停止時：常に実行 ==========
+# ========== 切断/停止時イベント ==========
 @bot.event
 async def on_close():
-    """停止時は常に実行：理由をファイルに記録"""
-    reason_file = ".last_stop_reason"
+    """停止時：理由が記録されていない＝外部(FadeHost)からの停止"""
+    # 既に理由が記録されている → ボタン操作による停止なので何もしない
+    if os.path.exists(REASON_FILE):
+        return
     
-    # 理由ファイルがない場合＝ファイル更新/外部からの停止
-    if not os.path.exists(reason_file):
-        with open(reason_file, "w", encoding="utf-8") as f:
-            f.write("update")
-        await send_status_embed(
-            title="⏸️ アップデートによる一時停止",
-            description="ファイル更新のためBotを一時停止しました。\nアップデート後、自動的に再起動されます。",
-            color=0x9B59B6
-        )
+    # 理由がない → FadeHost管理画面または外部からの停止
+    set_reason("fadehost_stop")
+    await send_status_embed(
+        title="⏹️ FadeHostから停止",
+        description="管理画面または外部からBotが停止されました。",
+        color=0xE74C3C
+    )
 
 bot.run(BOT_TOKEN)
