@@ -5,7 +5,7 @@ from core.common import is_owner
 from core.database import get_connection
 
 JST = timezone(timedelta(hours=9))
-MOD_LOG_CHANNEL_ID = 1558836223920046200  # ログ送信先チャンネルID（必要なら数字を入れて）
+MOD_LOG_CHANNEL_ID = 1558836223920046200  # ログ送信先チャンネルID
 
 # ========== データベース：履歴管理 ==========
 def init_moderation_table():
@@ -87,7 +87,6 @@ class ActionConfirmModal(discord.ui.Modal):
             await itx.response.send_message("❌ 理由を入力してください", ephemeral=True)
             return
 
-        # 実行処理
         success = True
         desc = ""
         color = 0x808080
@@ -130,10 +129,16 @@ class ActionConfirmModal(discord.ui.Modal):
                 self.action_type, reason
             )
 
-        embed = discord.Embed(title=self.action_type, description=desc, color=color, timestamp=datetime.now(JST))
+        embed = discord.Embed(
+            title=self.action_type,
+            description=desc,
+            color=color,
+            timestamp=datetime.now(JST)
+        )
         embed.add_field(name="対象", value=self.target_user.mention, inline=True)
         embed.add_field(name="実行者", value=itx.user.mention, inline=True)
         embed.add_field(name="理由", value=reason, inline=False)
+
         await itx.response.send_message(embed=embed, ephemeral=True)
 
         # ログチャンネル送信
@@ -147,18 +152,23 @@ class SelectTargetView(discord.ui.View):
     def __init__(self, action):
         super().__init__(timeout=120)
         self.action = action
-        self.add_item(discord.ui.UserSelect(placeholder="対象ユーザーを選択"))
+        self.selected_user = None
 
-    async def interaction_check(self, itx: discord.Interaction) -> bool:
-        target = self.children[0].values[0]
+    @discord.ui.user_select(placeholder="対象ユーザーを選択")
+    async def user_selected(self, itx: discord.Interaction, user: discord.Member):
+        self.selected_user = user
+        await self.process_selection(itx)
+
+    async def process_selection(self, itx: discord.Interaction):
+        target = self.selected_user
+
         if self.action == "history":
-            # 履歴表示
             logs = get_moderation_logs(target.id)
             if not logs:
                 await itx.response.send_message(
                     f"✅ {target.mention} には管理履歴がありません", ephemeral=True
                 )
-                return True
+                return
             desc_lines = []
             for act, reason, ts, status, op in logs:
                 status_mark = "✅" if status == "released" else "🔴"
@@ -171,7 +181,6 @@ class SelectTargetView(discord.ui.View):
             await itx.response.send_message(embed=embed, ephemeral=True)
 
         elif self.action == "unban":
-            # BAN解除
             try:
                 ban_entry = await itx.guild.fetch_ban(target)
                 if ban_entry:
@@ -190,14 +199,12 @@ class SelectTargetView(discord.ui.View):
                 )
 
         else:
-            # 警告/キック/BAN 共通
             await itx.response.send_modal(ActionConfirmModal(target, self.action))
-        return True
 
 # ========== メインパネル ==========
 class ModerationPanelView(discord.ui.View):
     def __init__(self):
-        super().__init__(timeout=None)
+        super().__init__(timeout=None)  # ✅ 永久有効
         init_moderation_table()
 
     @discord.ui.button(label="⚠️ 警告", style=discord.ButtonStyle.secondary, custom_id="mod:warn", row=0)
@@ -257,6 +264,8 @@ class ModerationPanelView(discord.ui.View):
 
 async def setup(tree: app_commands.CommandTree):
     init_moderation_table()
+    bot = tree.client
+    bot.add_view(ModerationPanelView())  # ✅ 永久登録
 
     @tree.command(name="管理パネル設置", description="メンバー管理パネル設置（オーナー専用）")
     @app_commands.check(is_owner)
@@ -268,7 +277,6 @@ async def setup(tree: app_commands.CommandTree):
 🚫 BAN → 理由を入力してBAN
 📝 履歴表示 → 対象ユーザーの過去の記録を表示
 ✅ BAN解除 → BANされたユーザーを解除
-
 🔒 オーナー以外は使用できません
 📋 全操作は自動的に履歴として保存されます""",
             color=0x992D22,
