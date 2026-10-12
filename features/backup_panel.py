@@ -9,7 +9,7 @@ from core.common import is_owner
 # ✅ タイムゾーン：日本標準時
 JST = timezone(timedelta(hours=9))
 
-STATUS_LOG_CHANNEL_ID = 1559119439981449256
+STATUS_LOG_CHANNEL_ID = 1558770503261491311
 REASON_FILE = ".last_stop_reason"
 
 BACKUP_DIR = "data_backup"
@@ -174,7 +174,7 @@ class BackupPanelView(discord.ui.View):
         if not await self.check_owner(itx):
             return
         await itx.response.send_message(
-            "🔄 Botを再起動します…\n停止→5秒待機→自動起動を実行します ✅",
+            "🔄 Botを再起動します…\n停止→5秒経過→再起動開始→完了 の順に実行します ✅",
             ephemeral=True
         )
         # ✅ フラグ：再起動ボタンから起動されたことを記録
@@ -188,20 +188,30 @@ class BackupPanelView(discord.ui.View):
             color=0xF39C12
         )
         
-        # 少し待ってから停止ログを送信
         await asyncio.sleep(0.5)
         
         # ② 停止ログ
         await send_status_embed(
             itx.client,
             title="⏹️ Bot停止",
-            description="自動再起動のためBotを停止しました。\n5秒後に自動的に復帰します。",
+            description="自動再起動のためBotを停止しました。\n5秒後に再起動を開始します。",
             color=0xE74C3C
         )
         
-        # 5秒待機してからBotを閉じる
+        # 5秒カウント
+        await asyncio.sleep(5)
+        
+        # ③ 5秒経過 → 再起動開始ログ
+        await send_status_embed(
+            itx.client,
+            title="⏳ 再起動開始",
+            description="5秒が経過しました。\n再起動を開始します…",
+            color=0x9B59B6
+        )
+        
+        # 少し待ってからBotを閉じる
         async def delayed_exit():
-            await asyncio.sleep(5)
+            await asyncio.sleep(0.5)
             await itx.client.close()
         await delayed_exit()
 
@@ -258,7 +268,7 @@ async def setup(tree: app_commands.CommandTree):
                 "💾 最新を永久保存 → 最新の状態を1件保存（前回分は上書き）\n"
                 "📂 保存状況を確認 → 現在保存されているデータを表示\n"
                 "📥 保存分を復元 → 保存した最新の状態に戻す\n"
-                "🔄 Botを再起動 → 停止→5秒後に自動的に復帰"
+                "🔄 Botを再起動 → 停止→5秒経過→再起動開始→完了"
             ),
             color=0x2ECC71
         )
