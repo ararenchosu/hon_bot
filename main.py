@@ -22,7 +22,7 @@ import features.auth_panel as auth_panel
 import features.role_panel as role_panel
 import features.revoke_panel as revoke_panel
 import features.call_panel as call_panel
-import features.welcome_leave as welcome_leave
+import features.welcome_leave as welcome_leave  # ✅ 読み込み済み
 import features.voice_channel_panel as voice_panel
 import features.ranking_panel as ranking_panel
 
@@ -43,7 +43,7 @@ init_db()
 
 intents = discord.Intents.default()
 intents.message_content = True
-intents.members = True
+intents.members = True  # ✅ 入退室監視に必要
 bot = discord.Client(intents=intents)
 tree = app_commands.CommandTree(bot)
 
@@ -177,7 +177,8 @@ async def on_ready():
     await role_panel.setup(tree)
     await revoke_panel.setup(tree)
     await call_panel.setup(tree, bot)
-    await welcome_leave.setup(bot)
+    await welcome_leave.setup(bot)  # ✅ 追加！入退室ログ起動
+    print("  ✅ welcome_leave 入退室ログ")
     await voice_panel.setup(tree)
     print("  ✅ voice_channel_panel")
     await ranking_panel.setup(tree)
@@ -202,14 +203,14 @@ async def on_ready():
     if last_reason == "restart_button":
         await send_status_embed(
             title="✅ 再起動完了",
-            description="ボタン操作により再起動されました。",
+            description="ボタン操作により再起動されました。\n入退室ログを監視中…",
             color=0xF39C12
         )
     else:
         # それ以外は全部「更新」扱い
         await send_status_embed(
             title="🔄 機能追加又は.py更新により再起動",
-            description="機能追加又は.py更新により再起動が実行されました。",
+            description="機能追加又は.py更新により再起動が実行されました。\n入退室ログを監視中…",
             color=0x9B59B6
         )
 
