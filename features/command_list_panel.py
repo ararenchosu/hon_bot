@@ -2,13 +2,17 @@ import discord
 from discord import app_commands
 
 class CommandListView(discord.ui.View):
-    def __init__(self, all_commands):
-        super().__init__(timeout=None)  # 永続表示
+    def __init__(self):
+        super().__init__(timeout=None)  # ✅ 引数なしに戻す
         self.page = 0
-        self.items_per_page = 5  # 1ページ5件表示
-        self.all_commands = all_commands  # ✅ 一覧を保持
+        self.items_per_page = 5
+        self.all_commands = []  # 空で初期化、後で更新
 
-    def make_embed(self):
+    def make_embed(self, all_commands=None):
+        # ✅ 引数が渡されたら更新、なければ保持しているものを使用
+        if all_commands is not None:
+            self.all_commands = all_commands
+
         cmd_list = []
         for cmd in self.all_commands:
             cmd_list.append({
@@ -44,7 +48,7 @@ class CommandListView(discord.ui.View):
     @discord.ui.button(label="🔄 更新", style=discord.ButtonStyle.success, custom_id="cmdlist:refresh")
     async def refresh_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
         self.page = 0
-        # ✅ Botから最新のコマンド一覧を再取得
+        # ✅ 最新の一覧を再取得
         self.all_commands = itx.client.tree.get_commands()
         await itx.response.edit_message(embed=self.make_embed(), view=self)
 
@@ -67,6 +71,7 @@ class CommandListView(discord.ui.View):
 
 async def setup(tree: app_commands.CommandTree):
     bot = tree.client
+    bot.add_view(CommandListView())  # ✅ 引数なしで登録！
 
     @tree.command(
         name="コマンド確認パネル",
@@ -74,7 +79,8 @@ async def setup(tree: app_commands.CommandTree):
     )
     async def cmd_list_panel(itx: discord.Interaction):
         all_cmds = tree.get_commands()
-        view = CommandListView(all_cmds)
+        view = CommandListView()
+        view.all_commands = all_cmds  # ✅ 後からデータをセット
         await itx.response.send_message(
             embed=view.make_embed(),
             view=view,
