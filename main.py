@@ -61,7 +61,6 @@ async def send_status_embed(title: str, description: str, color: int):
         print(f"⚠️ 通知送信エラー: {e}")
 
 def clear_reason_file():
-    """理由ファイルを削除"""
     if os.path.exists(REASON_FILE):
         try:
             os.remove(REASON_FILE)
@@ -69,12 +68,10 @@ def clear_reason_file():
             pass
 
 def set_reason(reason: str):
-    """停止理由を記録"""
     with open(REASON_FILE, "w", encoding="utf-8") as f:
         f.write(reason)
 
 def get_and_clear_reason():
-    """理由を読み取って削除"""
     if os.path.exists(REASON_FILE):
         with open(REASON_FILE, "r", encoding="utf-8") as f:
             reason = f.read().strip()
@@ -89,12 +86,11 @@ async def on_message(message):
         await security_panel.check_forbidden_words(message)
         await security_panel.check_link_restriction(message)
 
-# ========== 起動時：理由を判別して通知 ==========
+# ========== 起動時：通知を判別して送信 ==========
 @bot.event
 async def on_ready():
     print(f"\n✅ ログイン：{bot.user}")
     
-    # 前回の停止理由を取得
     last_reason = get_and_clear_reason()
     
     try:
@@ -163,9 +159,9 @@ async def on_ready():
     await security_panel.setup(tree)
     print("  ✅ security_panel")
     await invite_link.setup(tree)
-    print("  ✅ invite_link → /招待リンクパネル")
+    print("  ✅ invite_link")
     await backup_panel.setup(tree)
-    print("  ✅ backup_panel → /バックアップパネル")
+    print("  ✅ backup_panel")
     await othello.setup(tree)
     await othello_panel.setup(tree)
     await auth_panel.setup(tree)
@@ -179,7 +175,7 @@ async def on_ready():
     print("  ✅ ranking_panel")
 
     print("✅ 全コマンド登録完了")
-    print("\n📋 登録済みコマンド一覧：")
+    print("\n📋 コマンド一覧：")
     for cmd in tree.get_commands():
         print(f"   /{cmd.name}")
 
@@ -193,30 +189,19 @@ async def on_ready():
     asyncio.create_task(ranking_panel.auto_update_task(bot))
     print("✅ ランキング自動更新タスク起動完了")
 
-    # ✅ 起動通知：理由に応じて切り替え
-    if last_reason == "update":
-        await send_status_embed(
-            title="🔄 機能追加又は.py更新により再起動",
-            description="機能追加又は.py更新により再起動が実行されました。",
-            color=0x9B59B6
-        )
-    elif last_reason == "restart_button":
+    # ✅ 起動通知：ここがポイント！
+    if last_reason == "restart_button":
         await send_status_embed(
             title="✅ 再起動完了",
             description="ボタン操作により再起動されました。",
             color=0xF39C12
         )
-    elif last_reason == "fadehost_stop":
-        await send_status_embed(
-            title="✅ 外部操作によりBOTの起動成功",
-            description="外部操作（BOTアップデート等）により再起動が実行されました。",
-            color=0x2ECC71
-        )
     else:
+        # それ以外は全部「更新」扱い
         await send_status_embed(
-            title="✅ BOT起動",
-            description="Botが正常に起動しました。",
-            color=0x2ECC71
+            title="🔄 機能追加又は.py更新により再起動",
+            description="機能追加又は.py更新により再起動が実行されました。",
+            color=0x9B59B6
         )
 
     print("✅ 起動通知送信完了")
@@ -225,13 +210,10 @@ async def on_ready():
 # ========== 切断/停止時イベント ==========
 @bot.event
 async def on_close():
-    """停止時：理由ファイルの状態で判別"""
-    # 既に理由が記録されている → ボタン操作による停止
+    # 既に理由が記録されている → そのまま
     if os.path.exists(REASON_FILE):
         return
-    
-    # ファイル更新/機能追加による停止 → update として記録
+    # それ以外の停止は全部「更新」として記録
     set_reason("update")
-    # 停止通知は送信しない → 起動時のメッセージのみ表示
 
 bot.run(BOT_TOKEN)
