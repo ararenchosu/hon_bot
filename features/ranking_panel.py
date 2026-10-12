@@ -8,12 +8,10 @@ from core.common import is_owner
 
 JST = timezone(timedelta(hours=9))
 PANEL_TABLE = "ranking_panels"
-DATA_FILE = "kn_points_data.json"  # ✅ くじと同じJSONファイルを指定
-active_panels = {}
+DATA_FILE = "kn_points_data.json"
 
-# ===== JSONからポイントデータ読み込み =====
+# ========== データ読み込み ==========
 def load_points_data():
-    """JSONファイルからポイントデータを読み込む"""
     if not os.path.exists(DATA_FILE):
         return {}
     try:
@@ -24,7 +22,7 @@ def load_points_data():
         print(f"⚠️ ポイントデータ読み込みエラー: {e}")
         return {}
 
-# ===== DB 初期化 =====
+# ========== DB処理 ==========
 def init_db():
     from core.database import get_connection
     conn = get_connection()
@@ -45,7 +43,10 @@ def get_panel(channel_id):
     from core.database import get_connection
     conn = get_connection()
     cur = conn.cursor()
-    cur.execute(f"SELECT message_id, title, description FROM {PANEL_TABLE} WHERE channel_id = ?", (str(channel_id),))
+    cur.execute(
+        f"SELECT message_id, title, description FROM {PANEL_TABLE} WHERE channel_id = ?",
+        (str(channel_id),)
+    )
     r = cur.fetchone()
     conn.close()
     if not r:
@@ -63,17 +64,14 @@ def save_panel(channel_id, message_id, title, description):
     conn.commit()
     conn.close()
 
+# ========== ランキング取得 ==========
 def get_ranking(limit=10):
-    """JSONからポイント順位を取得（上位10名）"""
     points_dict = load_points_data()
     if not points_dict:
         return []
-    # (user_id, points) のリストに変換してポイント降順でソート
-    sorted_list = sorted(points_dict.items(), key=lambda x: x[1], reverse=True)
-    return sorted_list[:limit]
+    return sorted(points_dict.items(), key=lambda x: x[1], reverse=True)[:limit]
 
 def get_user_rank_and_points(user_id):
-    """指定ユーザーの順位とポイントを取得"""
     uid = str(user_id)
     points_dict = load_points_data()
     if not points_dict or uid not in points_dict:
@@ -84,7 +82,7 @@ def get_user_rank_and_points(user_id):
             return idx, pts
     return 0, 0
 
-# ===== ランキング埋め込み作成 =====
+# ========== 埋め込み作成 ==========
 def build_ranking_embed(title, description, guild: discord.Guild):
     ranking = get_ranking(10)
     medals = ["🥇", "🥈", "🥉"]
@@ -105,50 +103,12 @@ def build_ranking_embed(title, description, guild: discord.Guild):
     embed.set_footer(text=f"最終更新: {datetime.now(JST).strftime('%H:%M:%S')}")
     return embed
 
-# ===== 編集モーダル =====
-class RankingEditModal(discord.ui.Modal, title="ランキングパネル編集"):
-    def __init__(self, current_title, current_desc):
-        super().__init__(timeout=None)
-        self._title = current_title
-        self._desc = current_desc
-
-    title_in = discord.ui.TextInput(
-        label="パネルタイトル",
-        default="🏆 ポイントランキング",
-        required=True
-    )
-    desc_in = discord.ui.TextInput(
-        label="説明文",
-        default="現在のポイント上位10名を表示します✨",
-        style=discord.TextStyle.long,
-        required=True
-    )
-
-    async def on_submit(self, itx: discord.Interaction):
-        await itx.response.defer()
-        panel_data = get_panel(itx.channel_id)
-        if not panel_data:
-            await itx.followup.send("❌ パネル情報が見つかりません", ephemeral=True)
-            return
-        embed = build_ranking_embed(str(self.title_in), str(self.desc_in), itx.guild)
-        try:
-            msg = await itx.channel.fetch_message(panel_data["message_id"])
-            await msg.edit(embed=embed)
-            save_panel(itx.channel_id, panel_data["message_id"], str(self.title_in), str(self.desc_in))
-            await itx.followup.send("✅ パネルを更新しました", ephemeral=True)
-        except Exception as e:
-            await itx.followup.send(f"❌ 更新に失敗: {e}", ephemeral=True)
-
-# ===== View =====
+# ========== View ==========
 class RankingPanelView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
-    @discord.ui.button(
-        label="✏️ 内容編集",
-        style=discord.ButtonStyle.secondary,
-        custom_id="ranking:edit"
-    )
+    @discord.ui.button(label="✏️ 内容編集", style=discord.ButtonStyle.secondary, custom_id="ranking:edit")
     async def edit_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
@@ -157,38 +117,55 @@ class RankingPanelView(discord.ui.View):
         if not panel_data:
             await itx.response.send_message("❌ 先にパネルを設置してください", ephemeral=True)
             return
-        await itx.response.send_modal(RankingEditModal(panel_data["title"], panel_data["description"]))
 
-    @discord.ui.button(
-        label="🔄 今すぐ更新",
-        style=discord.ButtonStyle.primary,
-        custom_id="ranking:refresh"
-    )
+        class RankingEditModal(discord.ui.Modal, title="ランキングパネル編集"):
+            title_in = discord.ui.TextInput(
+                label="パネルタイトル",
+                default=panel_data["title"],
+                required=True
+            )
+            desc_in = discord.ui.TextInput(
+                label="説明文",
+                default=panel_data["description"],
+                style=discord.TextStyle.long,
+                required=True
+            )
+            async def on_submit(self, m_itx: discord.Interaction):
+                embed = build_ranking_embed(str(self.title_in), str(self.desc_in), m_itx.guild)
+                try:
+                    msg = await m_itx.channel.fetch_message(panel_data["message_id"])
+                    await msg.edit(embed=embed)
+                    save_panel(m_itx.channel_id, panel_data["message_id"], str(self.title_in), str(self.desc_in))
+                    await m_itx.response.send_message("✅ 更新・保存完了", ephemeral=True)
+                except Exception as e:
+                    await m_itx.response.send_message(f"❌ 更新に失敗: {e}", ephemeral=True)
+
+        await itx.response.send_modal(RankingEditModal())
+
+    @discord.ui.button(label="🔄 今すぐ更新", style=discord.ButtonStyle.primary, custom_id="ranking:refresh")
     async def refresh_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
-        await itx.response.defer(ephemeral=True)
         panel_data = get_panel(itx.channel_id)
         if not panel_data:
-            await itx.followup.send("❌ パネル情報が見つかりません", ephemeral=True)
+            await itx.response.send_message("❌ パネル情報が見つかりません", ephemeral=True)
             return
         embed = build_ranking_embed(panel_data["title"], panel_data["description"], itx.guild)
         try:
             msg = await itx.channel.fetch_message(panel_data["message_id"])
             await msg.edit(embed=embed)
-            await itx.followup.send("✅ 最新に更新しました", ephemeral=True)
+            await itx.response.send_message("✅ 最新に更新しました", ephemeral=True)
         except Exception as e:
-            await itx.followup.send(f"❌ 更新に失敗: {e}", ephemeral=True)
+            await itx.response.send_message(f"❌ 更新に失敗: {e}", ephemeral=True)
 
-# ===== 自動更新タスク =====
+# ========== 自動更新タスク ==========
 async def auto_update_task(client: discord.Client):
+    await client.wait_until_ready()
     while True:
         now = datetime.now(JST)
-        # 毎日23:59に実行
         target = now.replace(hour=23, minute=59, second=0, microsecond=0)
         if now >= target:
             target += timedelta(days=1)
         wait = (target - datetime.now(JST)).total_seconds()
         await asyncio.sleep(wait)
-        # 全パネル更新
         from core.database import get_connection
         conn = get_connection()
         cur = conn.cursor()
@@ -205,10 +182,9 @@ async def auto_update_task(client: discord.Client):
                 await msg.edit(embed=embed)
             except Exception as e:
                 print(f"⚠️ ランキング自動更新エラー: {e}")
-        # 1分待機して次の日へ
         await asyncio.sleep(60)
 
-# ===== セットアップ =====
+# ========== セットアップ ==========
 async def setup_panel(channel):
     title = "🏆 ポイントランキング"
     desc = "現在のポイント上位10名を表示します✨"
