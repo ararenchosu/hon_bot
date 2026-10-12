@@ -49,34 +49,44 @@ class InviteDurationView(discord.ui.View):
         else:
             expiry_text = "7日"
 
-        # ✅ QRコード生成
+        # QRコード生成
         qr_img = qrcode.make(invite.url)
         buffer = io.BytesIO()
         qr_img.save(buffer, format="PNG")
         buffer.seek(0)
         qr_file = discord.File(fp=buffer, filename="qrcode.png")
 
-        # ✅ Embed作成
+        # Embed作成
         embed = discord.Embed(
             title="🔗 サーバー招待リンク",
-            description=f"スマホのカメラまたはQRリーダーで読み取ってください",
+            description="スマホのカメラまたはQRリーダーで読み取ってください\n"
+                        "または下のボタンからリンクを開いてコピーできます",
             color=0x2ECC71
         )
-        embed.add_field(name="リンク", value=f"[{invite.url}]({invite.url})", inline=False)
-        embed.add_field(name="有効期限", value=expiry_text, inline=True)
-        embed.set_image(url="attachment://qrcode.png")  # ✅ QRコードを埋め込みに表示
+        embed.add_field(name="有効期限", value=expiry_text, inline=False)
+        embed.set_image(url="attachment://qrcode.png")
 
-        # ✅ DMにEmbed＋QRコード送信
+        # ✅ リンクを開くボタン（コピー用）
+        dm_view = discord.ui.View()
+        dm_view.add_item(discord.ui.Button(
+            label="🔗 リンクを開く・コピーする",
+            style=discord.ButtonStyle.link,
+            url=invite.url
+        ))
+
+        # DMに送信
         dm_success = False
         try:
-            await itx.user.send(embed=embed, file=qr_file)
+            await itx.user.send(embed=embed, file=qr_file, view=dm_view)
             dm_success = True
         except Exception as e:
             print(f"DM送信エラー: {e}")
 
-        # 結果を表示
+        # 結果表示
         if dm_success:
-            message = "✅ 招待リンクをDMに送信しました！\n埋め込みメッセージにQRコードを表示しています👇"
+            message = "✅ 招待リンクをDMに送信しました！\n" \
+                      "DM内の「リンクを開く・コピーする」ボタンからページを開き、\n" \
+                      "アドレスバーからURLをコピーしてください"
         else:
             message = f"⚠️ DMに送信できませんでした。こちらがリンクです👇\n🔗 {invite.url}"
 
