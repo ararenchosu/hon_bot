@@ -2,6 +2,7 @@ import discord
 from discord import app_commands
 import asyncio
 import os
+from datetime import datetime, timedelta, timezone
 from core.database import init_db
 from features.lottery_panel import setup as lottery_setup
 from features.login_bonus import setup as login_bonus_setup
@@ -25,6 +26,9 @@ import features.welcome_leave as welcome_leave
 import features.voice_channel_panel as voice_panel
 import features.ranking_panel as ranking_panel
 
+# ✅ タイムゾーン：日本標準時
+JST = timezone(timedelta(hours=9))
+
 # ✅ 通知先チャンネル（固定）
 STATUS_LOG_CHANNEL_ID = 1559119439981449256
 REASON_FILE = ".last_stop_reason"
@@ -44,6 +48,10 @@ bot = discord.Client(intents=intents)
 tree = app_commands.CommandTree(bot)
 
 # ========== 共通：ステータス通知送信 ==========
+def get_jst_now():
+    """現在時刻を日本標準時で取得"""
+    return datetime.now(JST)
+
 async def send_status_embed(title: str, description: str, color: int):
     if not STATUS_LOG_CHANNEL_ID:
         return
@@ -52,9 +60,10 @@ async def send_status_embed(title: str, description: str, color: int):
         if not channel:
             print(f"⚠️ チャンネルが見つかりません")
             return
+        now_jst = get_jst_now()
         embed = discord.Embed(title=title, description=description, color=color)
         embed.set_footer(
-            text=f"時刻：{discord.utils.format_dt(discord.utils.utcnow(), 'F')}"
+            text=f"時刻：{now_jst.strftime('%Y-%m-%d %H:%M:%S JST')}"
         )
         await channel.send(embed=embed)
     except Exception as e:
