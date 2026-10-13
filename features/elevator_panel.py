@@ -2,16 +2,24 @@ import discord
 from discord import app_commands
 from core.common import is_owner
 
-# ========== 設定 ==========
-# 常に表示される共通カテゴリ（どの階にいても見える）
+# ========== 🔧 設定：ここだけ編集すれば階数が増やせます ==========
+# 常に表示される共通カテゴリ（0階ではこれだけ表示）
 ALWAYS_VISIBLE_CATEGORY_IDS = [
     1542788842078216295,  # 固定表示カテゴリ
 ]
 
+# 各階の設定：好きなだけ追加可能
 FLOOR_CONFIG = {
+    "0階": {
+        "role_name": None,  # ロールなしで常時表示
+        "role_id": None,
+        "category_ids": [
+            1542788842078216295,  # 固定カテゴリのみ
+        ]
+    },
     "1階": {
         "role_name": "1階入出許可証",
-        "role_id": None,  # ← 実際のロールIDがあれば記入
+        "role_id": None,  # 実際のロールIDがあれば記入
         "category_ids": [
             1558099663922405376,  # 通話作成
             1558092186602704947,  # 雑談
@@ -22,52 +30,86 @@ FLOOR_CONFIG = {
     },
     "2階": {
         "role_name": "2階入出許可証",
-        "role_id": None,  # ← 実際のロールIDがあれば記入
+        "role_id": None,  # 実際のロールIDがあれば記入
         "category_ids": [
             1558766861859037234,  # カジノ機能
             1558467161146663023,  # オセロ機能
         ]
-    }
+    },
+    # 👇 例：3階を増やすときはこの下に追記するだけ
+    # "3階": {
+    #     "role_name": "3階入出許可証",
+    #     "role_id": None,
+    #     "category_ids": [
+    #         123456789012345678,
+    #     ]
+    # },
 }
-# ==========================
+# ===============================================================
+
+def build_floor_options():
+    """設定から選択肢を自動生成：階追加時に自動的に反映"""
+    options = []
+    for floor_name, info in FLOOR_CONFIG.items():
+        if floor_name == "0階":
+            desc = "共通カテゴリのみ表示"
+        else:
+            desc = f"{len(info['category_ids'])}個のカテゴリを表示"
+        options.append(discord.SelectOption(
+            label=floor_name,
+            description=desc,
+            emoji="🏢"
+        ))
+    return options
 
 class ElevatorView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
+        # 動的に最新の選択肢を読み込み
+        self._floor_select.options = build_floor_options()
 
     @discord.ui.select(
         placeholder="🏢 行き先の階を選択してください",
-        options=[
-            discord.SelectOption(
-                label=floor_name,
-                description=f"{len(info['category_ids'])}個 + 共通カテゴリが表示",
-                emoji="🏢"
-            )
-            for floor_name, info in FLOOR_CONFIG.items()
-        ],
         custom_id="elevator:select_floor"
     )
-    async def select_floor(self, itx: discord.Interaction, selected_values):
-        target_floor = selected_values[0]
+    async def _floor_select(self, itx: discord.Interaction, select: discord.ui.Select):
+        target_floor = select.values[0]
         guild = itx.guild
         user = itx.user
 
-        # 全階のロールをいったん削除
-        for info in FLOOR_CONFIG.values():
+        # 全階のロールをいったん削除（0階以外）
+        for floor_name, info in FLOOR_CONFIG.items():
+            if floor_name == "0階":
+                continue
             role = None
             if info["role_id"]:
                 role = guild.get_role(info["role_id"])
-            if not role:
+            if not role and info["role_name"]:
                 role = discord.utils.get(guild.roles, name=info["role_name"])
             if role and role in user.roles:
                 await user.remove_roles(role)
 
-        # 選択された階のロールを付与
+        # 選択された階が0階の場合 → ロール付与なし
+        if target_floor == "0階":
+            common_list = []
+            for cid in FLOOR_CONFIG["0階"]["category_ids"]:
+                cat = guild.get_channel(cid)
+                common_list.append(f"✅ {cat.name if cat else f'ID:{cid}'}")
+
+            await itx.response.send_message(
+                "✅ 0階に移動しました！\n"
+                "共通カテゴリのみ表示されます。\n\n"
+                "📌 表示カテゴリ：\n" + "\n".join(common_list),
+                ephemeral=True
+            )
+            return
+
+        # 選択された階（1階・2階…）のロールを付与
         target_info = FLOOR_CONFIG[target_floor]
         target_role = None
         if target_info["role_id"]:
             target_role = guild.get_role(target_info["role_id"])
-        if not target_role:
+        if not target_role and target_info["role_name"]:
             target_role = discord.utils.get(guild.roles, name=target_info["role_name"])
 
         if not target_role:
@@ -79,7 +121,7 @@ class ElevatorView(discord.ui.View):
 
         await user.add_roles(target_role)
 
-        # 表示カテゴリ一覧を作成
+        # 表示カテゴリ一覧
         common_list = []
         for cid in ALWAYS_VISIBLE_CATEGORY_IDS:
             cat = guild.get_channel(cid)
@@ -99,20 +141,44 @@ class ElevatorView(discord.ui.View):
         )
 
     @discord.ui.button(
-        label="❌ 階を閉じる（共通はそのまま）",
+        label="🔄 パネル更新",
+        style=discord.ButtonStyle.primary,
+        custom_id="elevator:refresh"
+    )
+    async def _refresh_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
+        """設定変更後に押すと選択肢が最新になる"""
+        new_view = ElevatorView()
+        embed = discord.Embed(
+            title="🏢 エレベーター",
+            description=(
+                "下のメニューから行き先の階を選択してください。\n"
+                "📌 **0階**：共通カテゴリのみ表示\n"
+                "🔹 **1階**：通話作成・雑談・くじ引き等\n"
+                "🔹 **2階**：カジノ・オセロ\n"
+                "🔄 階を追加したら「パネル更新」を押してください"
+            ),
+            color=0x3498DB
+        )
+        await itx.response.edit_message(embed=embed, view=new_view)
+        await itx.followup.send("✅ パネルを最新の設定に更新しました！", ephemeral=True)
+
+    @discord.ui.button(
+        label="❌ 全階を閉じる",
         style=discord.ButtonStyle.secondary,
         custom_id="elevator:clear"
     )
-    async def clear_btn(self, itx: discord.Interaction, btn):
+    async def _clear_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
         guild = itx.guild
         user = itx.user
         removed_list = []
 
-        for info in FLOOR_CONFIG.values():
+        for floor_name, info in FLOOR_CONFIG.items():
+            if floor_name == "0階":
+                continue
             role = None
             if info["role_id"]:
                 role = guild.get_role(info["role_id"])
-            if not role:
+            if not role and info["role_name"]:
                 role = discord.utils.get(guild.roles, name=info["role_name"])
             if role and role in user.roles:
                 await user.remove_roles(role)
@@ -120,15 +186,14 @@ class ElevatorView(discord.ui.View):
 
         if removed_list:
             await itx.response.send_message(
-                f"✅ 以下のロールを削除しました。\n"
-                f"共通カテゴリはそのまま表示されています。\n\n"
+                "✅ 全ての階を閉じました。\n"
+                "📌 0階（共通カテゴリ）の状態に戻ります。\n\n"
                 f"削除：{', '.join(removed_list)}",
                 ephemeral=True
             )
         else:
             await itx.response.send_message(
-                "ℹ️ 現在どの階にも入っていません。\n"
-                "共通カテゴリは表示されたままです。",
+                "ℹ️ 既に0階の状態です。",
                 ephemeral=True
             )
 
@@ -148,10 +213,10 @@ async def setup(tree: app_commands.CommandTree, bot=None):
             title="🏢 エレベーター",
             description=(
                 "下のメニューから行き先の階を選択してください。\n"
-                f"📌 カテゴリID:`{ALWAYS_VISIBLE_CATEGORY_IDS[0]}` は常に表示されます。\n\n"
+                "📌 **0階**：共通カテゴリのみ表示\n"
                 "🔹 **1階**：通話作成・雑談・くじ引き等\n"
                 "🔹 **2階**：カジノ・オセロ\n"
-                "❌ 「階を閉じる」→ 共通カテゴリ以外を非表示"
+                "🔄 階を追加したら「パネル更新」を押してください"
             ),
             color=0x3498DB
         )
