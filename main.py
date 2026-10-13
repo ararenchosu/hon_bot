@@ -41,7 +41,7 @@ TOKEN_MAIN = os.getenv("DISCORD_TOKEN")
 if not TOKEN_MAIN:
     print("❌ 環境変数 DISCORD_TOKEN が設定されていません")
     exit(1)
-print(f"✅ メイントークン読み込み完了：{BOT_TOKEN[:10]}...")
+print(f"✅ メイントークン読み込み完了：{TOKEN_MAIN[:10]}...")
 
 intents_main = discord.Intents.default()
 intents_main.message_content = True
