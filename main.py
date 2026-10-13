@@ -256,15 +256,14 @@ else:
         print("\n🔍 サブBot View 永続化チェック & 登録中...")
         all_ok_sub = True
         try:
-            # 自販機Viewのリスト
+            # ✅ 永続化が必要なのは VendingMachineView と OrderConfirmView
             views_to_register_sub = [
                 (vending_machine.VendingMachineView, "VendingMachineView"),
-                (vending_machine.PayPayLinkInputView, "PayPayLinkInputView"),
                 (vending_machine.OrderConfirmView, "OrderConfirmView"),
+                # ❌ PayPayLinkInputView → PayPayLinkPromptView に改名、一時利用のため登録不要
             ]
 
             for view_cls, name in views_to_register_sub:
-                # チェック実行
                 try:
                     instance = view_cls()
                     if instance.timeout is not None:
