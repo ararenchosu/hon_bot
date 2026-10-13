@@ -11,7 +11,7 @@ ORDERS_FILE = "vending_orders.json"
 VENDING_LOG_CHANNEL_ID = 1559602193647271936
 PANEL_COLOR = 0x2ECC71  # 緑色で統一
 
-# パネル最新情報を保存
+# ユーザー用パネルの位置を保存
 _active_panel = {"channel_id": None, "message_id": None}
 
 def load_products():
@@ -96,7 +96,7 @@ class VendingAdminPanelView(discord.ui.View):
     async def refresh_panel_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         if not _active_panel["message_id"]:
             await interaction.response.send_message(
-                "⚠️ まだ自販機パネルが設置されていません。\n一度管理パネルを送信し直してください。",
+                "⚠️ まだ自販機パネルが設置されていません。\n`/自動販売機設置` を先に実行してください。",
                 ephemeral=True
             )
             return
@@ -108,7 +108,7 @@ class VendingAdminPanelView(discord.ui.View):
             message = await channel.fetch_message(_active_panel["message_id"])
         except:
             await interaction.response.send_message(
-                "❌ パネルが見つかりません。\n管理パネルを送信し直してください。",
+                "❌ パネルが見つかりません。\n`/自動販売機設置` を再度実行してください。",
                 ephemeral=True
             )
             return
@@ -262,10 +262,6 @@ class VendingMachineView(discord.ui.View):
         for pid, prod in products.items():
             stock = prod.get("stock")
             disabled = stock is not None and stock <= 0
-            if stock is None:
-                stock_text = "無限"
-            else:
-                stock_text = f"{stock}個"
             self.add_item(discord.ui.Button(
                 label=f"{prod['name']} ￥{prod['price']}" + (" [在庫切れ]" if disabled else ""),
                 custom_id=f"vending_buy_{pid}",
@@ -431,26 +427,44 @@ class OrderConfirmView(discord.ui.View):
         await interaction.message.edit(embed=embed, view=None)
 
 async def setup(tree: app_commands.CommandTree):
-    @tree.command(name="自動販売機管理パネル", description="商品管理パネルを表示")
+    # ===== 管理用コマンド =====
+    @tree.command(name="自動販売機管理", description="商品管理パネルを表示（管理者専用）")
     async def admin_panel_cmd(interaction: discord.Interaction):
         if not is_owner(interaction):
             await interaction.response.send_message("❌ 権限なし", ephemeral=True)
             return
-        # 管理パネル送信と同時にユーザー用パネルも自動設置
-        admin_embed = discord.Embed(
+        embed = discord.Embed(
             title="⚙️ 自販機管理パネル",
-            description="商品の追加・削除・仕入れ・更新ができます",
+            description="商品の追加・削除・仕入れ・更新ができます\n先に `/自動販売機設置` でパネルを設置してください",
             color=PANEL_COLOR
         )
-        await interaction.response.send_message(embed=admin_embed, view=VendingAdminPanelView())
-        
-        # ユーザー用パネルを同じチャンネルに自動設置
+        await interaction.response.send_message(embed=embed, view=VendingAdminPanelView(), ephemeral=True)
+
+    # ===== ユーザー用パネル設置コマンド =====
+    @tree.command(name="自動販売機設置", description="ユーザー向け商品パネルを設置（管理者専用）")
+    async def place_panel_cmd(interaction: discord.Interaction):
+        if not is_owner(interaction):
+            await interaction.response.send_message("❌ 権限なし", ephemeral=True)
+            return
         products = load_products()
         if not products:
-            await interaction.followup.send("⚠️ 商品が登録されていないため、まず商品を追加してください。", ephemeral=True)
+            await interaction.response.send_message(
+                "⚠️ 商品が登録されていません。\n先に `/自動販売機管理` から商品を追加してください。",
+                ephemeral=True
+            )
             return
-        user_embed = build_vending_embed()
-        msg = await interaction.channel.send(embed=user_embed, view=VendingMachineView())
+        # 古いパネルを削除（同チャンネルに新規設置の場合）
+        if _active_panel["message_id"] and _active_panel["channel_id"] == interaction.channel_id:
+            try:
+                ch = interaction.guild.get_channel(_active_panel["channel_id"])
+                if ch:
+                    old_msg = await ch.fetch_message(_active_panel["message_id"])
+                    await old_msg.delete()
+            except:
+                pass
+        # 新規設置
+        embed = build_vending_embed()
+        msg = await interaction.channel.send(embed=embed, view=VendingMachineView())
         _active_panel["channel_id"] = interaction.channel_id
         _active_panel["message_id"] = msg.id
-        await interaction.followup.send("✅ ユーザー用パネルを設置しました！", ephemeral=True)
+        await interaction.response.send_message("✅ 自動販売機を設置しました！", ephemeral=True)
