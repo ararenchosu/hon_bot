@@ -9,7 +9,9 @@ JST = timezone(timedelta(hours=9))
 VENDING_DATA_FILE = "vending_products.json"
 ORDERS_FILE = "vending_orders.json"
 VENDING_LOG_CHANNEL_ID = 1559602193647271936
-PANEL_COLOR = 0x2ECC71  # 緑色で統一
+
+# 2枚目の画像に合わせた暗めの緑系色
+PANEL_COLOR = 0x1C8A5B
 
 # ユーザー用パネルの位置を保存
 _active_panel = {"channel_id": None, "message_id": None}
@@ -37,27 +39,35 @@ def save_orders(data):
 def generate_ticket_id():
     return f"V-{datetime.now(JST).strftime('%Y%m%d')}-{os.urandom(2).hex().upper()}"
 
-# 商品一覧埋め込み作成
+# ===== 商品一覧埋め込み（2枚目風の見た目） =====
 def build_vending_embed():
     products = load_products()
-    desc = "商品を選択して購入手続きへ進んでください。\n"
+
+    desc = "好きなオートレーションを選んで安く買えます！購入後チケットでお渡しします。\n"
     desc += "────────────────────────────\n"
+
     for pid, prod in products.items():
-        desc += f"**{prod['name']}**\n"
-        if prod.get("desc"):
-            desc += f"{prod['desc']}\n"
         stock = prod.get("stock")
         if stock is None:
             stock_text = "無限"
         else:
             stock_text = f"{stock}個（手動仕入れ）"
+
+        desc += f"**{prod['name']}**\n"
+        if prod.get("desc"):
+            desc += f"{prod['desc']}\n"
         desc += f"価格: {prod['price']}円 | 在庫: {stock_text}\n"
         desc += "────────────────────────────\n"
-    return discord.Embed(
+
+    embed = discord.Embed(
         title="🛒 商品一覧",
         description=desc,
         color=PANEL_COLOR
     )
+
+    embed.set_footer(text="Created by vending system • Components V2")
+
+    return embed
 
 # ===== 管理パネル =====
 class VendingAdminPanelView(discord.ui.View):
@@ -116,7 +126,7 @@ class VendingAdminPanelView(discord.ui.View):
         await message.edit(embed=embed, view=VendingMachineView())
         await interaction.response.send_message("✅ パネルを最新の内容に更新しました！", ephemeral=True)
 
-# 仕入れ用選択View
+# ===== 仕入れ =====
 class RestockSelectView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=120)
@@ -181,6 +191,7 @@ class RestockModal(discord.ui.Modal, title="商品仕入れ"):
             ephemeral=True
         )
 
+# ===== 商品追加 =====
 class AddProductModal(discord.ui.Modal, title="商品追加"):
     name = discord.ui.TextInput(label="商品名", required=True)
     price = discord.ui.TextInput(label="金額（円）", required=True)
@@ -209,6 +220,7 @@ class AddProductModal(discord.ui.Modal, title="商品追加"):
             ephemeral=True
         )
 
+# ===== 商品削除 =====
 class ProductRemoveSelectView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=120)
@@ -292,6 +304,7 @@ class VendingMachineView(discord.ui.View):
             return False
         return True
 
+# ===== 購入確認 =====
 class PurchaseConfirmView(discord.ui.View):
     def __init__(self, pid, name, price):
         super().__init__(timeout=180)
@@ -313,6 +326,7 @@ class PurchaseConfirmView(discord.ui.View):
     async def cancel_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
 
+# ===== 支払い方法 =====
 class PaymentMethodView(discord.ui.View):
     def __init__(self, pid, name, price):
         super().__init__(timeout=180)
@@ -329,6 +343,7 @@ class PaymentMethodView(discord.ui.View):
     async def cancel_btn(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
 
+# ===== PayPayリンク送信 =====
 class PayPayLinkModal(discord.ui.Modal, title="PayPayリンク送信"):
     link = discord.ui.TextInput(
         label="PayPayリンクを貼り付け",
@@ -361,7 +376,6 @@ class PayPayLinkModal(discord.ui.Modal, title="PayPayリンク送信"):
         }
         save_orders(orders)
 
-        # 在庫減少
         products = load_products()
         if self.pid in products:
             stock = products[self.pid].get("stock")
@@ -389,7 +403,7 @@ class PayPayLinkModal(discord.ui.Modal, title="PayPayリンク送信"):
                 embed.set_footer(text=datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S"))
                 await log_ch.send(embed=embed, view=OrderConfirmView(ticket_id))
 
-# 永続対応
+# ===== 注文確認・引き渡し完了 =====
 class OrderConfirmView(discord.ui.View):
     def __init__(self, ticket_id=None):
         super().__init__(timeout=None)
@@ -426,8 +440,8 @@ class OrderConfirmView(discord.ui.View):
         embed = discord.Embed(title="✅ 引き渡し完了", color=PANEL_COLOR)
         await interaction.message.edit(embed=embed, view=None)
 
+# ===== コマンド登録 =====
 async def setup(tree: app_commands.CommandTree):
-    # ===== 管理用コマンド =====
     @tree.command(name="自動販売機管理", description="商品管理パネルを表示（管理者専用）")
     async def admin_panel_cmd(interaction: discord.Interaction):
         if not is_owner(interaction):
@@ -440,7 +454,6 @@ async def setup(tree: app_commands.CommandTree):
         )
         await interaction.response.send_message(embed=embed, view=VendingAdminPanelView(), ephemeral=True)
 
-    # ===== ユーザー用パネル設置コマンド =====
     @tree.command(name="自動販売機設置", description="ユーザー向け商品パネルを設置（管理者専用）")
     async def place_panel_cmd(interaction: discord.Interaction):
         if not is_owner(interaction):
@@ -453,7 +466,7 @@ async def setup(tree: app_commands.CommandTree):
                 ephemeral=True
             )
             return
-        # 古いパネルを削除（同チャンネルに新規設置の場合）
+
         if _active_panel["message_id"] and _active_panel["channel_id"] == interaction.channel_id:
             try:
                 ch = interaction.guild.get_channel(_active_panel["channel_id"])
@@ -462,7 +475,7 @@ async def setup(tree: app_commands.CommandTree):
                     await old_msg.delete()
             except:
                 pass
-        # 新規設置
+
         embed = build_vending_embed()
         msg = await interaction.channel.send(embed=embed, view=VendingMachineView())
         _active_panel["channel_id"] = interaction.channel_id
