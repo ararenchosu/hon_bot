@@ -6,7 +6,7 @@ from core.common import is_owner
 # 常に表示される共通カテゴリ（0階：誰でも最初から見える）
 ALWAYS_VISIBLE_CATEGORY_IDS = [
     1542788842078216295,  # 固定表示
-    1558099663922405376,  # ✅ 0階に移動：通話作成
+    1558092186602704947,  # ✅ 💬 雑談 → 0階へ移動
 ]
 
 # 「鯖メン」ロール名
@@ -18,15 +18,14 @@ FLOOR_CONFIG = {
         "role_id": None,
         "category_ids": [
             1542788842078216295,  # 固定表示
-            1558099663922405376,  # ✅ 通話作成
+            1558092186602704947,  # ✅ 💬 雑談
         ]
     },
     "1階": {
         "role_name": "1階入出許可証",
         "role_id": None,
         "category_ids": [
-            # ✅ 1階からは削除済み
-            1558092186602704947,  # 雑談
+            1558099663922405376,  # ✅ 📞 通話作成 → 1階に残す
             1558697840031568032,  # 1日1回限定
             1558088654147166219,  # ロール付与＆剥奪
             1558080162367545375,  # メンバー呼び出し
@@ -46,8 +45,8 @@ PANEL_EMBED = {
     "title": "🏢 エレベーター",
     "description": (
         "下のメニューから行き先の階を選択してください。\n"
-        "📌 **0階**：共通カテゴリ（通話作成・認証等）が常に表示\n"
-        "🔹 **1階**：雑談・くじ引き・ロール管理等\n"
+        "📌 **0階**：固定カテゴリ＋💬雑談（常時表示）\n"
+        "🔹 **1階**：📞通話作成・くじ引き・ロール管理等\n"
         "🔹 **2階**：カジノ・オセロ\n"
         "🔄 設定変更後は「パネル更新」を押してください"
     ),
@@ -59,7 +58,7 @@ def build_floor_options():
     options = []
     for floor_name, info in FLOOR_CONFIG.items():
         if floor_name == "0階":
-            desc = "共通カテゴリを表示"
+            desc = "固定＋雑談が常時表示"
         else:
             desc = f"{len(info['category_ids'])}個のカテゴリを表示"
         options.append(discord.SelectOption(
@@ -137,7 +136,7 @@ class ElevatorView(discord.ui.View):
                 common_list.append(f"✅ {cat.name if cat else f'ID:{cid}'}")
             await itx.response.send_message(
                 "✅ 0階に移動しました！\n"
-                "共通カテゴリが表示されます。\n\n"
+                "固定カテゴリ＋雑談が表示されます。\n\n"
                 "📌 表示カテゴリ：\n" + "\n".join(common_list),
                 ephemeral=True
             )
