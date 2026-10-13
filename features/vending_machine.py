@@ -63,7 +63,8 @@ class VendingMachineView(discord.ui.View):
                 await interaction.response.send_message("❌ この商品は現在利用できません", ephemeral=True)
                 return False
             prod = products[pid]
-            view = PayPayLinkInputView(pid)
+            # 一時的に表示するだけ → 永続Viewに引数を渡さない
+            view = PayPayLinkPromptView(pid, prod["name"], prod["price"])
             await interaction.response.send_message(
                 f"🛒 **{prod['name']}**\n"
                 f"💴 金額：**￥{prod['price']}**\n\n"
@@ -78,16 +79,17 @@ class VendingMachineView(discord.ui.View):
             return False
         return True
 
-class PayPayLinkInputView(discord.ui.View):
-    def __init__(self, product_id):
-        super().__init__(timeout=None)
-        self.pid = product_id
+# ✅ こちらは一時的に表示するだけ（永続化しない）
+class PayPayLinkPromptView(discord.ui.View):
+    def __init__(self, pid, name, price):
+        super().__init__(timeout=300)  # 5分で期限切れ
+        self.pid = pid
+        self.prod_name = name
+        self.price = price
 
-    @discord.ui.button(label="📋 リンクを貼り付けて送信", style=discord.ButtonStyle.success, custom_id="vending_link_input")
+    @discord.ui.button(label="📋 リンクを貼り付けて送信", style=discord.ButtonStyle.success)
     async def prompt_link(self, interaction: discord.Interaction, button: discord.ui.Button):
-        products = load_products()
-        prod = products[self.pid]
-        modal = PayPayLinkModal(self.pid, prod["name"], prod["price"])
+        modal = PayPayLinkModal(self.pid, self.prod_name, self.price)
         await interaction.response.send_modal(modal)
 
 class PayPayLinkModal(discord.ui.Modal, title="PayPay送金リンク送信"):
@@ -142,12 +144,13 @@ class PayPayLinkModal(discord.ui.Modal, title="PayPay送金リンク送信"):
                 embed.set_footer(text=datetime.now(JST).strftime("%Y-%m-%d %H:%M:%S"))
                 await log_ch.send(embed=embed, view=OrderConfirmView(ticket_id))
 
+# ✅ こちらも一時的に表示するだけ（永続化しない）
 class OrderConfirmView(discord.ui.View):
     def __init__(self, ticket_id):
-        super().__init__(timeout=None)
+        super().__init__(timeout=None)  # ログメッセージには期限なし
         self.ticket_id = ticket_id
 
-    @discord.ui.button(label="✅ 確認・引き渡し完了", style=discord.ButtonStyle.success, custom_id="vending_complete")
+    @discord.ui.button(label="✅ 確認・引き渡し完了", style=discord.ButtonStyle.success)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
         orders = load_orders()
         if self.ticket_id not in orders:
@@ -159,7 +162,7 @@ class OrderConfirmView(discord.ui.View):
         embed = discord.Embed(title="✅ 引き渡し完了", color=0x2ECC71)
         await interaction.message.edit(embed=embed, view=None)
 
-# ===== セットアップ（サブBot用）=====
+# ===== セットアップ =====
 async def setup(tree: app_commands.CommandTree):
     @tree.command(name="vending-add", description="自販機に商品を追加")
     @app_commands.describe(name="商品名", price="金額", description="商品の説明")
@@ -191,7 +194,7 @@ async def setup(tree: app_commands.CommandTree):
         save_products(products)
         await interaction.response.send_message(f"✅ 削除しました", ephemeral=True)
 
-    @tree.command(name="vending-setup", description="自販機パネルを設置（メインBotで実行）")
+    @tree.command(name="vending-setup", description="自販機パネルを設置")
     async def vending_setup_cmd(interaction: discord.Interaction):
         if not is_owner(interaction):
             await interaction.response.send_message("❌ 権限なし", ephemeral=True)
