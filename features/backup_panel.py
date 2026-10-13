@@ -101,7 +101,6 @@ def restore_backup(backup_name: str):
     except Exception as e:
         return False, str(e)
 
-# ✅ 定刻バックアップ本体（機能はそのまま有効）
 async def auto_backup_scheduler(client):
     await client.wait_until_ready()
     last_executed_hour = None
@@ -128,7 +127,7 @@ def start_auto_backup(client):
     global auto_backup_task
     if auto_backup_task is None or auto_backup_task.done():
         auto_backup_task = asyncio.create_task(auto_backup_scheduler(client))
-        schedule_str = ", ".join(f"{h}時" for h in BACKUP_HOURS)
+        schedule_str = " / ".join(f"{h}時" for h in BACKUP_HOURS)
         print(f"✅ 定刻バックアップ開始（毎日 {schedule_str}）")
 
 def get_panel_embed():
@@ -219,6 +218,17 @@ class BackupPanelView(discord.ui.View):
             await itx.response.send_message(
                 "⚠️ 定刻監視は既に停止しています", ephemeral=True
             )
+
+    @discord.ui.button(
+        label="🔄 パネル情報更新",
+        style=discord.ButtonStyle.secondary,
+        custom_id="backup:refresh"
+    )
+    async def refresh_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
+        if not await self.check_owner(itx):
+            return
+        await itx.response.edit_message(embed=get_panel_embed())
+        await itx.followup.send("✅ パネル情報を最新に更新しました", ephemeral=True)
 
     @discord.ui.button(
         label="📥 保存分を復元",
