@@ -4,7 +4,6 @@ import asyncio
 import os
 from datetime import datetime, timedelta, timezone
 from core.database import init_db
-
 # ===== 各機能インポート =====
 from features.lottery_panel import setup as lottery_setup
 from features.login_bonus import setup as login_bonus_setup
@@ -157,7 +156,6 @@ async def on_ready():
             (ranking_panel.RankingPanelView, "RankingPanelView"),
             (ElevatorView, "ElevatorView"),
         ]
-
         for view_cls, name in views_to_register_main:
             instance = check_view_no_args(view_cls, name)
             if instance:
@@ -205,8 +203,8 @@ async def on_ready():
     await voice_panel.setup(tree_main, bot_main); print("  ✅ voice_panel")
     await ranking_panel.setup(tree_main, bot_main); print("  ✅ ranking_panel")
     await elevator_panel.setup(tree_main, bot_main); print("  ✅ elevator_panel")
-
     print("✅ メインBot 全コマンド登録完了")
+
     print("\n🔄 メインBot グローバル同期中...")
     synced_main = await tree_main.sync()
     print(f"✅ メインBot 同期完了！合計 {len(synced_main)} 件")
@@ -221,7 +219,6 @@ async def on_ready():
     else:
         await send_status_embed(bot_main, "🔄 起動完了",
             "機能追加・更新により起動しました。\n全パネル復旧済みです✨", 0x9B59B6)
-
     print("✅ 起動通知送信完了")
     print("✅ メインBot 準備完了\n")
 
@@ -256,13 +253,12 @@ else:
         print("\n🔍 サブBot View 永続化チェック & 登録中...")
         all_ok_sub = True
         try:
-            # ✅ 永続化が必要なのは VendingMachineView と OrderConfirmView
+            # ✅ 管理パネル含めて全て登録
             views_to_register_sub = [
                 (vending_machine.VendingMachineView, "VendingMachineView"),
                 (vending_machine.OrderConfirmView, "OrderConfirmView"),
-                # ❌ PayPayLinkInputView → PayPayLinkPromptView に改名、一時利用のため登録不要
+                (vending_machine.VendingAdminPanelView, "VendingAdminPanelView"),
             ]
-
             for view_cls, name in views_to_register_sub:
                 try:
                     instance = view_cls()
