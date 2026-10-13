@@ -28,14 +28,13 @@ import features.welcome_leave as welcome_leave
 import features.voice_channel_panel as voice_panel
 import features.ranking_panel as ranking_panel
 import features.elevator_panel as elevator_panel
-import features.vending_machine as vending_machine
 
 JST = timezone(timedelta(hours=9))
 STATUS_LOG_CHANNEL_ID = 1559119439981449256
 REASON_FILE = ".last_stop_reason"
 
 # ==================================================
-# 🔴 Bot1：メインBot — 従来の機能のみ
+# 🔴 Bot1：メインBot
 # ==================================================
 TOKEN_MAIN = os.getenv("DISCORD_TOKEN")
 if not TOKEN_MAIN:
@@ -97,7 +96,7 @@ async def on_ready():
     
     last_reason = get_and_clear_reason()
 
-    # ========== 共通：永続化チェッカー ==========
+    # ========== 永続化チェッカー ==========
     def check_view_no_args(view_class, view_name: str):
         try:
             instance = view_class()
@@ -156,6 +155,7 @@ async def on_ready():
             (ranking_panel.RankingPanelView, "RankingPanelView"),
             (ElevatorView, "ElevatorView"),
         ]
+
         for view_cls, name in views_to_register_main:
             instance = check_view_no_args(view_cls, name)
             if instance:
@@ -228,7 +228,7 @@ async def on_close():
         set_reason("update")
 
 # ==================================================
-# 🔵 Bot2：サブBot — 自販機機能を全て担当
+# 🔵 Bot2：サブBot — 構造を残したまま自販機部分のみ削除
 # ==================================================
 TOKEN_SUB = os.getenv("DISCORD_TOKEN_SUB")
 bot_sub = None
@@ -249,40 +249,14 @@ else:
         print(f"\n========== サブBot 起動 ==========")
         print(f"✅ ログイン：{bot_sub.user}")
 
-        # ========== サブ：永続化チェック & View登録 ==========
-        print("\n🔍 サブBot View 永続化チェック & 登録中...")
-        all_ok_sub = True
-        try:
-            # ✅ 管理パネル含めて全て登録
-            views_to_register_sub = [
-                (vending_machine.VendingMachineView, "VendingMachineView"),
-                (vending_machine.OrderConfirmView, "OrderConfirmView"),
-                (vending_machine.VendingAdminPanelView, "VendingAdminPanelView"),
-            ]
-            for view_cls, name in views_to_register_sub:
-                try:
-                    instance = view_cls()
-                    if instance.timeout is not None:
-                        print(f"   ⚠️ 【{name}】: timeout が None になっていません")
-                    bot_sub.add_view(instance)
-                    print(f"   ✅ {name}")
-                except TypeError as e:
-                    print(f"   ❌ 【{name}】: 引数が必要 → {e}")
-                    all_ok_sub = False
+        # ========== サブ：View登録エリア（今後追加可） ==========
+        print("\n🔍 サブBot View 登録エリア")
+        print("ℹ️ 現在サブBot専用のViewは登録されていません")
+        print("✅ サブBot 準備完了\n")
 
-            if all_ok_sub:
-                print("✅ サブBot 全View 永続登録完了 ✨")
-            else:
-                print("⚠️ サブBot：上記の❌ を修正して再起動してください")
-        except Exception as e:
-            print(f"❌ サブBot View登録エラー: {e}")
-            import traceback
-            traceback.print_exc()
-
-        # ========== サブ：コマンド登録 ==========
-        print("\n🔄 サブBot コマンド登録中...")
-        await vending_machine.setup(tree_sub)
-        print("  ✅ vending_machine")
+        # ========== サブ：コマンド登録エリア（今後追加可） ==========
+        print("\n🔄 サブBot コマンド登録エリア")
+        print("ℹ️ 現在サブBot専用のコマンドは登録されていません")
 
         print("\n🔄 サブBot グローバル同期中...")
         synced_sub = await tree_sub.sync()
