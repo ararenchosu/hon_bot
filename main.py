@@ -26,11 +26,11 @@ import features.call_panel as call_panel
 import features.welcome_leave as welcome_leave
 import features.voice_channel_panel as voice_panel
 import features.ranking_panel as ranking_panel
+import features.elevator_panel as elevator_panel  # ✅ 追加
 
 JST = timezone(timedelta(hours=9))
 STATUS_LOG_CHANNEL_ID = 1559119439981449256
 REASON_FILE = ".last_stop_reason"
-
 BOT_TOKEN = os.getenv("DISCORD_TOKEN")
 if not BOT_TOKEN:
     print("❌ 環境変数 DISCORD_TOKEN が設定されていません")
@@ -125,9 +125,10 @@ async def on_ready():
             LockChannelView, UnlockChannelView,
             EmergencyLockView, EmergencyUnlockView
         )
-        from features.invite_link import InvitePanelView  # ✅ InviteDurationView削除
+        from features.invite_link import InvitePanelView
         from features.backup_panel import BackupPanelView, RestoreConfirmView
         from features.command_list_panel import CommandListView
+        from features.elevator_panel import ElevatorView  # ✅ 追加
         
         views_to_register = [
             (LotteryPanelView, "LotteryPanelView"),
@@ -154,6 +155,7 @@ async def on_ready():
             (revoke_panel.RoleRevokePanelView, "RoleRevokePanelView"),
             (voice_panel.VoiceCreatePanelView, "VoiceCreatePanelView"),
             (ranking_panel.RankingPanelView, "RankingPanelView"),
+            (ElevatorView, "ElevatorView"),  # ✅ 追加
         ]
         
         for view_cls, name in views_to_register:
@@ -202,6 +204,7 @@ async def on_ready():
     await welcome_leave.setup(bot); print("  ✅ welcome_leave")
     await voice_panel.setup(tree, bot); print("  ✅ voice_panel")
     await ranking_panel.setup(tree, bot); print("  ✅ ranking_panel")
+    await elevator_panel.setup(tree, bot); print("  ✅ elevator_panel")  # ✅ 追加
     
     print("✅ 全コマンド登録完了")
     
@@ -227,7 +230,7 @@ async def on_ready():
         )
     
     print("✅ 起動通知送信完了")
-    print("\n✅ 起動完了 — 永続化チェック機能搭載済み\n")
+    print("\n✅ 起動完了 — エレベーター機能搭載済み\n")
 
 @bot.event
 async def on_close():
