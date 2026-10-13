@@ -5,7 +5,7 @@ import os
 from datetime import datetime, timedelta, timezone
 from core.database import init_db
 
-# ===== 各機能インポート（そのまま）=====
+# ===== 各機能インポート =====
 from features.lottery_panel import setup as lottery_setup
 from features.login_bonus import setup as login_bonus_setup
 from features.slots_panel import setup as slots_setup
@@ -29,13 +29,14 @@ import features.welcome_leave as welcome_leave
 import features.voice_channel_panel as voice_panel
 import features.ranking_panel as ranking_panel
 import features.elevator_panel as elevator_panel
+import features.vending_machine as vending_machine
 
 JST = timezone(timedelta(hours=9))
 STATUS_LOG_CHANNEL_ID = 1559119439981449256
 REASON_FILE = ".last_stop_reason"
 
 # ==================================================
-# 🔴 Bot1：メインBot — 全機能搭載
+# 🔴 Bot1：メインBot — 従来の機能のみ
 # ==================================================
 TOKEN_MAIN = os.getenv("DISCORD_TOKEN")
 if not TOKEN_MAIN:
@@ -97,7 +98,7 @@ async def on_ready():
     
     last_reason = get_and_clear_reason()
 
-    # ========== 永続化チェッカー ==========
+    # ========== 共通：永続化チェッカー ==========
     def check_view_no_args(view_class, view_name: str):
         try:
             instance = view_class()
@@ -108,10 +109,9 @@ async def on_ready():
             print(f"   ❌ 【{view_name}】: 引数が必要 → {e}")
             return None
 
-    # ========== View登録 ==========
-    print("\n🔍 View 永続化チェック & 登録中...")
-    all_ok = True
-
+    # ========== メイン：View登録 ==========
+    print("\n🔍 メインBot View 永続化チェック & 登録中...")
+    all_ok_main = True
     try:
         from features.lottery_panel import LotteryPanelView, PointCheckPanelView
         from features.login_bonus import LoginBonusPanelView
@@ -130,7 +130,7 @@ async def on_ready():
         from features.command_list_panel import CommandListView
         from features.elevator_panel import ElevatorView
 
-        views_to_register = [
+        views_to_register_main = [
             (LotteryPanelView, "LotteryPanelView"),
             (PointCheckPanelView, "PointCheckPanelView"),
             (LoginBonusPanelView, "LoginBonusPanelView"),
@@ -158,30 +158,30 @@ async def on_ready():
             (ElevatorView, "ElevatorView"),
         ]
 
-        for view_cls, name in views_to_register:
+        for view_cls, name in views_to_register_main:
             instance = check_view_no_args(view_cls, name)
             if instance:
                 bot_main.add_view(instance)
                 print(f"   ✅ {name}")
             else:
-                all_ok = False
+                all_ok_main = False
 
         clv = CommandListView()
         clv.tree = tree_main
         bot_main.add_view(clv)
         print("   ✅ CommandListView")
 
-        if all_ok:
-            print("✅ 全View 永続登録完了 ✨")
+        if all_ok_main:
+            print("✅ メインBot 全View 永続登録完了 ✨")
         else:
-            print("⚠️ 上記の❌ を修正して再起動してください")
+            print("⚠️ メインBot：上記の❌ を修正して再起動してください")
     except Exception as e:
-        print(f"❌ View登録エラー: {e}")
+        print(f"❌ メインBot View登録エラー: {e}")
         import traceback
         traceback.print_exc()
 
-    # ========== コマンド登録 ==========
-    print("\n🔄 コマンド登録中...")
+    # ========== メイン：コマンド登録 ==========
+    print("\n🔄 メインBot コマンド登録中...")
     await lottery_setup(tree_main, bot_main); print("  ✅ lottery_panel")
     await login_bonus_setup(tree_main, bot_main); print("  ✅ login_bonus")
     await slots_setup(tree_main, bot_main); print("  ✅ slots_panel")
@@ -206,11 +206,10 @@ async def on_ready():
     await ranking_panel.setup(tree_main, bot_main); print("  ✅ ranking_panel")
     await elevator_panel.setup(tree_main, bot_main); print("  ✅ elevator_panel")
 
-    print("✅ 全コマンド登録完了")
-
-    print("\n🔄 グローバル同期中...")
-    synced = await tree_main.sync()
-    print(f"✅ 同期完了！合計 {len(synced)} 件")
+    print("✅ メインBot 全コマンド登録完了")
+    print("\n🔄 メインBot グローバル同期中...")
+    synced_main = await tree_main.sync()
+    print(f"✅ メインBot 同期完了！合計 {len(synced_main)} 件")
 
     print("\n🔄 自動更新タスク起動中...")
     asyncio.create_task(ranking_panel.auto_update_task(bot_main))
@@ -232,14 +231,16 @@ async def on_close():
         set_reason("update")
 
 # ==================================================
-# 🔵 Bot2：サブBot — 起動のみ・機能なし
+# 🔵 Bot2：サブBot — 自販機機能を全て担当
 # ==================================================
 TOKEN_SUB = os.getenv("DISCORD_TOKEN_SUB")
+bot_sub = None
+tree_sub = None
+
 if not TOKEN_SUB:
     print("⚠️ 環境変数 DISCORD_TOKEN_SUB が未設定 → サブBotは起動しません")
 else:
     print(f"✅ サブトークン読み込み完了：{TOKEN_SUB[:10]}...")
-
     intents_sub = discord.Intents.default()
     intents_sub.message_content = True
     intents_sub.members = True
@@ -250,7 +251,48 @@ else:
     async def on_ready():
         print(f"\n========== サブBot 起動 ==========")
         print(f"✅ ログイン：{bot_sub.user}")
-        print("✅ 起動完了（機能なし）\n")
+
+        # ========== サブ：永続化チェック & View登録 ==========
+        print("\n🔍 サブBot View 永続化チェック & 登録中...")
+        all_ok_sub = True
+        try:
+            # 自販機Viewのリスト
+            views_to_register_sub = [
+                (vending_machine.VendingMachineView, "VendingMachineView"),
+                (vending_machine.PayPayLinkInputView, "PayPayLinkInputView"),
+                (vending_machine.OrderConfirmView, "OrderConfirmView"),
+            ]
+
+            for view_cls, name in views_to_register_sub:
+                # チェック実行
+                try:
+                    instance = view_cls()
+                    if instance.timeout is not None:
+                        print(f"   ⚠️ 【{name}】: timeout が None になっていません")
+                    bot_sub.add_view(instance)
+                    print(f"   ✅ {name}")
+                except TypeError as e:
+                    print(f"   ❌ 【{name}】: 引数が必要 → {e}")
+                    all_ok_sub = False
+
+            if all_ok_sub:
+                print("✅ サブBot 全View 永続登録完了 ✨")
+            else:
+                print("⚠️ サブBot：上記の❌ を修正して再起動してください")
+        except Exception as e:
+            print(f"❌ サブBot View登録エラー: {e}")
+            import traceback
+            traceback.print_exc()
+
+        # ========== サブ：コマンド登録 ==========
+        print("\n🔄 サブBot コマンド登録中...")
+        await vending_machine.setup(tree_sub)
+        print("  ✅ vending_machine")
+
+        print("\n🔄 サブBot グローバル同期中...")
+        synced_sub = await tree_sub.sync()
+        print(f"✅ サブBot 同期完了！合計 {len(synced_sub)} 件")
+        print("✅ サブBot 準備完了\n")
 
 # ==================================================
 # 🚀 並行起動
@@ -258,11 +300,9 @@ else:
 async def main():
     init_db()
     print("🔄 データベース初期化完了")
-
     tasks = [bot_main.start(TOKEN_MAIN)]
-    if TOKEN_SUB:
+    if TOKEN_SUB and bot_sub:
         tasks.append(bot_sub.start(TOKEN_SUB))
-
     await asyncio.gather(*tasks)
 
 if __name__ == "__main__":
