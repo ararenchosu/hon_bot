@@ -1,17 +1,14 @@
 import discord
 from discord import app_commands
 from core.common import is_owner
-
 # ========== 🔧 設定 ==========
 # 常に表示される共通カテゴリ（0階：誰でも最初から見える）
 ALWAYS_VISIBLE_CATEGORY_IDS = [
     1542788842078216295,  # 固定表示
     1558092186602704947,  # ✅ 💬 雑談 → 0階へ移動
 ]
-
 # 「鯖メン」ロール名
 MEMBER_ROLE_NAME = "鯖メン"
-
 FLOOR_CONFIG = {
     "0階": {
         "role_name": None,
@@ -40,7 +37,6 @@ FLOOR_CONFIG = {
         ]
     },
 }
-
 PANEL_EMBED = {
     "title": "🏢 エレベーター",
     "description": (
@@ -53,7 +49,6 @@ PANEL_EMBED = {
     "color": 0x3498DB
 }
 # ===============================================================
-
 def build_floor_options():
     options = []
     for floor_name, info in FLOOR_CONFIG.items():
@@ -65,33 +60,30 @@ def build_floor_options():
             label=floor_name, description=desc, emoji="🏢"
         ))
     return options
-
 def make_embed():
     return discord.Embed(
         title=PANEL_EMBED["title"],
         description=PANEL_EMBED["description"],
         color=PANEL_EMBED["color"]
     )
-
 class EditEmbedModal(discord.ui.Modal, title="✏️ パネル内容変更"):
-    def __init__(self):
+    def __init__(self, current_title, current_desc):
         super().__init__(timeout=None)
         self.title_input = discord.ui.TextInput(
             label="タイトル",
-            default=PANEL_EMBED["title"],
+            default=current_title,
             max_length=100,
             required=True
         )
         self.desc_input = discord.ui.TextInput(
             label="説明文",
-            default=PANEL_EMBED["description"],
+            default=current_desc,
             style=discord.TextStyle.long,
             max_length=2000,
             required=True
         )
         self.add_item(self.title_input)
         self.add_item(self.desc_input)
-
     async def on_submit(self, itx: discord.Interaction):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用", ephemeral=True)
@@ -100,12 +92,10 @@ class EditEmbedModal(discord.ui.Modal, title="✏️ パネル内容変更"):
         PANEL_EMBED["description"] = self.desc_input.value
         await itx.response.edit_message(embed=make_embed(), view=ElevatorView())
         await itx.followup.send("✅ 更新完了", ephemeral=True)
-
 class ElevatorView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
         self._floor_select.options = build_floor_options()
-
     @discord.ui.select(
         placeholder="🏢 行き先の階を選択してください",
         custom_id="elevator:select_floor"
@@ -114,7 +104,6 @@ class ElevatorView(discord.ui.View):
         target_floor = select.values[0]
         guild = itx.guild
         user = itx.user
-
         # オーナー以外 → 選択中のロールを削除
         if not is_owner(itx):
             for floor_name, info in FLOOR_CONFIG.items():
@@ -127,7 +116,6 @@ class ElevatorView(discord.ui.View):
                     role = discord.utils.get(guild.roles, name=info["role_name"])
                 if role and role in user.roles:
                     await user.remove_roles(role)
-
         # 0階選択
         if target_floor == "0階":
             common_list = []
@@ -141,10 +129,8 @@ class ElevatorView(discord.ui.View):
                 ephemeral=True
             )
             return
-
         # 1階・2階…
         target_info = FLOOR_CONFIG[target_floor]
-
         if not is_owner(itx):
             target_role = None
             if target_info["role_id"]:
@@ -161,7 +147,6 @@ class ElevatorView(discord.ui.View):
             role_note = f"付与ロール：`{target_role.name}`"
         else:
             role_note = "👑 オーナー：全カテゴリ表示中"
-
         common_list = []
         for cid in ALWAYS_VISIBLE_CATEGORY_IDS:
             cat = guild.get_channel(cid)
@@ -170,14 +155,12 @@ class ElevatorView(discord.ui.View):
         for cid in target_info["category_ids"]:
             cat = guild.get_channel(cid)
             floor_list.append(f"✅ {cat.name if cat else f'ID:{cid}'}")
-
         await itx.response.send_message(
             f"✅ {target_floor} に移動しました！\n{role_note}\n\n"
             f"📌 常に表示：\n" + "\n".join(common_list) + "\n\n"
             f"📂 {target_floor}のカテゴリ：\n" + "\n".join(floor_list),
             ephemeral=True
         )
-
     @discord.ui.button(
         label="✏️ 内容変更",
         style=discord.ButtonStyle.secondary,
@@ -188,8 +171,16 @@ class ElevatorView(discord.ui.View):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用", ephemeral=True)
             return
-        await itx.response.send_modal(EditEmbedModal())
-
+        # ✅ 現在メッセージに表示されている内容を取得
+        embed = itx.message.embeds[0] if itx.message.embeds else None
+        if embed:
+            current_title = embed.title or ""
+            current_desc = embed.description or ""
+        else:
+            current_title = PANEL_EMBED["title"]
+            current_desc = PANEL_EMBED["description"]
+        # 現在の内容を初期値にしてモーダルを開く
+        await itx.response.send_modal(EditEmbedModal(current_title, current_desc))
     @discord.ui.button(
         label="🔄 パネル更新",
         style=discord.ButtonStyle.primary,
@@ -199,7 +190,6 @@ class ElevatorView(discord.ui.View):
     async def _refresh_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
         await itx.response.edit_message(embed=make_embed(), view=ElevatorView())
         await itx.followup.send("✅ パネルを更新しました！", ephemeral=True)
-
     @discord.ui.button(
         label="❌ 全階を閉じる",
         style=discord.ButtonStyle.danger,
@@ -232,13 +222,11 @@ class ElevatorView(discord.ui.View):
             )
         else:
             await itx.response.send_message("ℹ️ 既に0階です", ephemeral=True)
-
 async def setup(tree: app_commands.CommandTree, bot=None):
     if bot is not None and not hasattr(bot, "_elevator_view_registered"):
         bot.add_view(ElevatorView())
         bot._elevator_view_registered = True
         print("✅ elevator_panel 永続View登録完了")
-
     @tree.command(
         name="エレベーター設置",
         description="🏢 階層別カテゴリ切り替えパネル"
