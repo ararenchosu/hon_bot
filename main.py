@@ -2,9 +2,6 @@ import discord
 from discord import app_commands
 import asyncio
 import os
-import re
-import aiohttp
-import tempfile
 from datetime import datetime, timedelta, timezone
 from core.database import init_db
 # ===== 各機能インポート =====
@@ -35,19 +32,6 @@ import features.elevator_panel as elevator_panel
 JST = timezone(timedelta(hours=9))
 STATUS_LOG_CHANNEL_ID = 1559119439981449256
 REASON_FILE = ".last_stop_reason"
-
-# 動画リンク検知用パターン
-VIDEO_PATTERNS = [
-    r"\.mp4",
-    r"cdn\.discordapp\.com/attachments",
-    r"discord-attachments\.com",
-]
-def is_video_link(text: str) -> bool:
-    text = text.lower()
-    for pat in VIDEO_PATTERNS:
-        if re.search(pat, text):
-            return True
-    return False
 
 # ==================================================
 # 🔴 Bot1：メインBot
@@ -241,7 +225,7 @@ async def on_close():
         set_reason("update")
 
 # ==================================================
-# 🔵 Bot2：サブBot — 動画リンク→新リンク生成
+# 🔵 Bot2：サブBot — 動画リンク機能削除済み
 # ==================================================
 TOKEN_SUB = os.getenv("DISCORD_TOKEN_SUB")
 bot_sub = None
@@ -258,59 +242,13 @@ else:
     tree_sub = app_commands.CommandTree(bot_sub)
 
     @bot_sub.event
-    async def on_message(message):
-        if message.author.bot:
-            return
-        content = message.content.strip()
-        if not content:
-            return
-        
-        # .mp4リンクを検知
-        if not is_video_link(content):
-            return
-
-        await message.add_reaction("✅")
-
-        try:
-            # 1. 動画データをダウンロード
-            async with aiohttp.ClientSession() as session:
-                async with session.get(content) as resp:
-                    if resp.status != 200:
-                        await message.channel.send("❌ ダウンロードに失敗しました")
-                        return
-                    video_data = await resp.read()
-
-            # 2. 一時ファイルに保存
-            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as f:
-                f.write(video_data)
-                temp_path = f.name
-
-            # 3. Botが再アップロード → 新しいリンク取得
-            with open(temp_path, "rb") as f:
-                sent_msg = await message.channel.send(
-                    "🎬 動画を再生成しました！",
-                    file=discord.File(f, filename="video.mp4")
-                )
-
-            new_link = sent_msg.attachments[0].url
-
-            # 4. 元リンクと新リンクを表示
-            await message.channel.send(
-                f"🔗 元のリンク：<{content}>\n"
-                f"✨ 新しいリンク：<{new_link}>\n\n"
-                "💡 全く別のURLになりました！"
-            )
-
-            # 後始末
-            os.remove(temp_path)
-
-        except Exception as e:
-            await message.channel.send(f"❌ エラー：{e}")
-
-    @bot_sub.event
     async def on_ready():
         print(f"\n========== サブBot 起動 ==========")
         print(f"✅ ログイン：{bot_sub.user}")
+        print("\n🔍 サブBot View 登録エリア")
+        print("ℹ️ 現在サブBot専用のViewは登録されていません")
+        print("\n🔄 サブBot コマンド登録エリア")
+        print("ℹ️ 現在サブBot専用のコマンドは登録されていません")
         print("\n🔄 サブBot グローバル同期中...")
         synced_sub = await tree_sub.sync()
         print(f"✅ サブBot 同期完了！合計 {len(synced_sub)} 件")
