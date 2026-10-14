@@ -3,6 +3,8 @@ from discord import app_commands
 import asyncio
 import os
 import re
+import aiohttp
+import tempfile
 from datetime import datetime, timedelta, timezone
 from core.database import init_db
 # ===== 各機能インポート =====
@@ -37,7 +39,7 @@ REASON_FILE = ".last_stop_reason"
 # 動画リンク検知用パターン
 VIDEO_PATTERNS = [
     r"\.mp4",
-    r"discord\.com/channels/\d+/\d+/\d+",
+    r"cdn\.discordapp\.com/attachments",
     r"discord-attachments\.com",
 ]
 def is_video_link(text: str) -> bool:
@@ -110,7 +112,6 @@ async def on_ready():
     
     last_reason = get_and_clear_reason()
 
-    # ========== 永続化チェッカー ==========
     def check_view_no_args(view_class, view_name: str):
         try:
             instance = view_class()
@@ -121,7 +122,6 @@ async def on_ready():
             print(f"   ❌ 【{view_name}】: 引数が必要 → {e}")
             return None
 
-    # ========== メイン：View登録 ==========
     print("\n🔍 メインBot View 永続化チェック & 登録中...")
     all_ok_main = True
     try:
@@ -192,7 +192,6 @@ async def on_ready():
         import traceback
         traceback.print_exc()
 
-    # ========== メイン：コマンド登録 ==========
     print("\n🔄 メインBot コマンド登録中...")
     await lottery_setup(tree_main, bot_main); print("  ✅ lottery_panel")
     await login_bonus_setup(tree_main, bot_main); print("  ✅ login_bonus")
@@ -242,7 +241,7 @@ async def on_close():
         set_reason("update")
 
 # ==================================================
-# 🔵 Bot2：サブBot — 動画リンク整理機能を追加
+# 🔵 Bot2：サブBot — 動画リンク→新リンク生成
 # ==================================================
 TOKEN_SUB = os.getenv("DISCORD_TOKEN_SUB")
 bot_sub = None
@@ -265,25 +264,53 @@ else:
         content = message.content.strip()
         if not content:
             return
-        if is_video_link(content):
-            await message.add_reaction("✅")
+        
+        # .mp4リンクを検知
+        if not is_video_link(content):
+            return
+
+        await message.add_reaction("✅")
+
+        try:
+            # 1. 動画データをダウンロード
+            async with aiohttp.ClientSession() as session:
+                async with session.get(content) as resp:
+                    if resp.status != 200:
+                        await message.channel.send("❌ ダウンロードに失敗しました")
+                        return
+                    video_data = await resp.read()
+
+            # 2. 一時ファイルに保存
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".mp4") as f:
+                f.write(video_data)
+                temp_path = f.name
+
+            # 3. Botが再アップロード → 新しいリンク取得
+            with open(temp_path, "rb") as f:
+                sent_msg = await message.channel.send(
+                    "🎬 動画を再生成しました！",
+                    file=discord.File(f, filename="video.mp4")
+                )
+
+            new_link = sent_msg.attachments[0].url
+
+            # 4. 元リンクと新リンクを表示
             await message.channel.send(
-                "🎬 動画リンクを整理しました！\n"
-                f"🔗 リンク：<{content}>\n\n"
-                "💡 上記をコピーしてお使いください！"
+                f"🔗 元のリンク：<{content}>\n"
+                f"✨ 新しいリンク：<{new_link}>\n\n"
+                "💡 全く別のURLになりました！"
             )
+
+            # 後始末
+            os.remove(temp_path)
+
+        except Exception as e:
+            await message.channel.send(f"❌ エラー：{e}")
 
     @bot_sub.event
     async def on_ready():
         print(f"\n========== サブBot 起動 ==========")
         print(f"✅ ログイン：{bot_sub.user}")
-        
-        print("\n🔍 サブBot View 登録エリア")
-        print("ℹ️ 現在サブBot専用のViewは登録されていません")
-        
-        print("\n🔄 サブBot コマンド登録エリア")
-        print("ℹ️ 現在サブBot専用のコマンドは登録されていません")
-        
         print("\n🔄 サブBot グローバル同期中...")
         synced_sub = await tree_sub.sync()
         print(f"✅ サブBot 同期完了！合計 {len(synced_sub)} 件")
