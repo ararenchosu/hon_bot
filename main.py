@@ -2,6 +2,7 @@ import discord
 from discord import app_commands
 import asyncio
 import os
+import re
 from datetime import datetime, timedelta, timezone
 from core.database import init_db
 # ===== 各機能インポート =====
@@ -32,6 +33,19 @@ import features.elevator_panel as elevator_panel
 JST = timezone(timedelta(hours=9))
 STATUS_LOG_CHANNEL_ID = 1559119439981449256
 REASON_FILE = ".last_stop_reason"
+
+# 動画リンク検知用パターン
+VIDEO_PATTERNS = [
+    r"\.mp4",
+    r"discord\.com/channels/\d+/\d+/\d+",
+    r"discord-attachments\.com",
+]
+def is_video_link(text: str) -> bool:
+    text = text.lower()
+    for pat in VIDEO_PATTERNS:
+        if re.search(pat, text):
+            return True
+    return False
 
 # ==================================================
 # 🔴 Bot1：メインBot
@@ -228,7 +242,7 @@ async def on_close():
         set_reason("update")
 
 # ==================================================
-# 🔵 Bot2：サブBot — 構造を残したまま自販機部分のみ削除
+# 🔵 Bot2：サブBot — 動画リンク整理機能を追加
 # ==================================================
 TOKEN_SUB = os.getenv("DISCORD_TOKEN_SUB")
 bot_sub = None
@@ -245,19 +259,31 @@ else:
     tree_sub = app_commands.CommandTree(bot_sub)
 
     @bot_sub.event
+    async def on_message(message):
+        if message.author.bot:
+            return
+        content = message.content.strip()
+        if not content:
+            return
+        if is_video_link(content):
+            await message.add_reaction("✅")
+            await message.channel.send(
+                "🎬 動画リンクを整理しました！\n"
+                f"🔗 リンク：<{content}>\n\n"
+                "💡 上記をコピーしてお使いください！"
+            )
+
+    @bot_sub.event
     async def on_ready():
         print(f"\n========== サブBot 起動 ==========")
         print(f"✅ ログイン：{bot_sub.user}")
-
-        # ========== サブ：View登録エリア（今後追加可） ==========
+        
         print("\n🔍 サブBot View 登録エリア")
         print("ℹ️ 現在サブBot専用のViewは登録されていません")
-        print("✅ サブBot 準備完了\n")
-
-        # ========== サブ：コマンド登録エリア（今後追加可） ==========
+        
         print("\n🔄 サブBot コマンド登録エリア")
         print("ℹ️ 現在サブBot専用のコマンドは登録されていません")
-
+        
         print("\n🔄 サブBot グローバル同期中...")
         synced_sub = await tree_sub.sync()
         print(f"✅ サブBot 同期完了！合計 {len(synced_sub)} 件")
