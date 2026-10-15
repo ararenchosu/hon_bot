@@ -95,11 +95,16 @@ def save_config():
 
 load_config()
 
-def build_floor_options():
+def build_floor_options(selected_floor=None):
     options = []
     for floor_name, info in FLOOR_CONFIG.items():
         desc = "固定＋雑談が常時表示" if floor_name == "0階" else f"{len(info['category_ids'])}個のカテゴリを表示"
-        options.append(discord.SelectOption(label=floor_name, description=desc, emoji="🏢"))
+        options.append(discord.SelectOption(
+            label=floor_name,
+            description=desc,
+            emoji="🏢",
+            default=(floor_name == selected_floor)
+        ))
     return options
 
 def make_embed():
@@ -109,6 +114,7 @@ def make_embed():
         color=PANEL_EMBED["color"]
     )
 
+# ========== 埋め込み内容変更モーダル ==========
 class EditEmbedModal(discord.ui.Modal, title="✏️ パネル内容変更"):
     def __init__(self, current_title, current_desc):
         super().__init__(timeout=None)
@@ -131,6 +137,7 @@ class EditEmbedModal(discord.ui.Modal, title="✏️ パネル内容変更"):
         await itx.response.edit_message(embed=make_embed(), view=ElevatorView())
         await itx.followup.send("✅ 更新完了", ephemeral=True)
 
+# ========== 階設定モーダル ==========
 class EditFloorModal(discord.ui.Modal, title="🏢 階設定"):
     def __init__(self, floor_name=None):
         super().__init__(timeout=None)
@@ -152,7 +159,8 @@ class EditFloorModal(discord.ui.Modal, title="🏢 階設定"):
         )
         self.cats_input = discord.ui.TextInput(
             label="カテゴリID（改行区切り）", default=cats_default,
-            placeholder="123456789\n987654321", style=discord.TextStyle.long, required=bool(name_default and name_default != "0階")
+            placeholder="123456789\n987654321", style=discord.TextStyle.long,
+            required=bool(name_default and name_default != "0階")
         )
         if not self.cats_input.required:
             self.cats_input.label = "カテゴリID（任意・改行区切り）"
@@ -184,10 +192,10 @@ class EditFloorModal(discord.ui.Modal, title="🏢 階設定"):
             f"📂 カテゴリ：{len(category_ids)}件", ephemeral=True
         )
 
-# ========== 🔥 修正：ElevatorView を永続化 ==========
+# ========== エレベーターパネル本体 ==========
 class ElevatorView(discord.ui.View):
     def __init__(self):
-        super().__init__(timeout=None)  # ← 永続：期限なし
+        super().__init__(timeout=None)
         self._floor_select.options = build_floor_options()
 
     @discord.ui.select(
@@ -298,22 +306,27 @@ class ElevatorView(discord.ui.View):
             if removed_list else "ℹ️ 既に0階です", ephemeral=True
         )
 
-# ========== 🔥 修正：管理パネルも永続化 ==========
+# ========== 🔥 管理パネル：選択状態を保持するように修正 ==========
 class AdminFloorView(discord.ui.View):
     def __init__(self):
-        super().__init__(timeout=None)  # ← 永続：期限なし
-        self._floor_select.options = [
-            discord.SelectOption(label=name, description=f"{len(info['category_ids'])}カテゴリ")
-            for name, info in FLOOR_CONFIG.items()
-        ]
+        super().__init__(timeout=None)
+        self.selected_floor = None  # 選択中の階を保持
+        self._update_options()
+
+    def _update_options(self):
+        """選択肢を最新に更新（選択中の項目をハイライト）"""
+        self._floor_select.options = build_floor_options(self.selected_floor)
 
     @discord.ui.select(
-        placeholder="操作する階を選択",
+        placeholder="操作する階を選択してください",
         custom_id="elevator_admin:select_floor"
     )
     async def _floor_select(self, itx: discord.Interaction, select: discord.ui.Select):
-        # 選択状態を保持するため、ここでは受け取るだけ
-        await itx.response.defer(ephemeral=True)
+        # ✅ 選択された階を記憶
+        self.selected_floor = select.values[0]
+        self._update_options()
+        await itx.response.edit_message(view=self)
+        await itx.followup.send(f"✅ 【{self.selected_floor}】を選択しました！", ephemeral=True)
 
     @discord.ui.button(
         label="➕ 新規階追加", style=discord.ButtonStyle.success,
@@ -333,11 +346,11 @@ class AdminFloorView(discord.ui.View):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用", ephemeral=True)
             return
-        selected = itx.data.get("values")
-        if not selected:
+        # ✅ 保持した値を使う
+        if not self.selected_floor:
             await itx.response.send_message("⚠️ 先に上から編集する階を選択してください", ephemeral=True)
             return
-        await itx.response.send_modal(EditFloorModal(selected[0]))
+        await itx.response.send_modal(EditFloorModal(self.selected_floor))
 
     @discord.ui.button(
         label="🗑️ 選択階を削除", style=discord.ButtonStyle.danger,
@@ -347,18 +360,22 @@ class AdminFloorView(discord.ui.View):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用", ephemeral=True)
             return
-        selected = itx.data.get("values")
-        if not selected:
+        # ✅ 保持した値を使う
+        if not self.selected_floor:
             await itx.response.send_message("⚠️ 先に上から削除する階を選択してください", ephemeral=True)
             return
-        target = selected[0]
+        target = self.selected_floor
         if target == "0階":
             await itx.response.send_message("❌ 0階は削除できません", ephemeral=True)
             return
         if target in FLOOR_CONFIG:
             del FLOOR_CONFIG[target]
             save_config()
-            await itx.response.send_message(
+            # 選択をクリア
+            self.selected_floor = None
+            self._update_options()
+            await itx.response.edit_message(view=self)
+            await itx.followup.send(
                 f"✅ 【{target}】を削除しました！\n🔄 パネルを更新して反映してください", ephemeral=True
             )
         else:
@@ -370,11 +387,8 @@ class AdminFloorView(discord.ui.View):
     )
     async def _reload_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
         load_config()
-        # 選択肢を最新に置き換え
-        self._floor_select.options = [
-            discord.SelectOption(label=name, description=f"{len(info['category_ids'])}カテゴリ")
-            for name, info in FLOOR_CONFIG.items()
-        ]
+        self.selected_floor = None
+        self._update_options()
         await itx.response.edit_message(view=self)
         await itx.followup.send("✅ 設定を再読み込みしました", ephemeral=True)
 
@@ -404,8 +418,9 @@ async def setup(tree: app_commands.CommandTree, bot=None):
             title="⚙️ エレベーター管理パネル",
             description=(
                 "下のリストから階を選択してから各ボタンを押してください。\n"
+                "✅ 選択中の階はメニューでハイライト表示されます\n"
                 "➕ 新規追加 → 階名・ロール名・カテゴリIDを登録\n"
-                "✏️ 編集 → 既存の設定を変更\n"
+                "✏️ 編集 → 選択した階の設定を変更\n"
                 "🗑️ 削除 → 選択した階を削除（0階は不可）"
             ),
             color=0x9B59B6
