@@ -41,12 +41,12 @@ if GOOGLE_API_KEY:
         print(f"   ❌ モデル一覧取得エラー: {e}")
     print("=" * 50)
     
-    # ✅ 一覧の一番上のモデルを使用
+    # ✅ エラーメッセージ推奨のモデルに変更
     model = genai.GenerativeModel(
-        model_name="models/gemini-2.5-flash",  # ← これに変更！
+        model_name="models/gemini-3.8-flash",  # ← ここを書き換え！
         generation_config={"temperature": 0.9, "top_p": 0.95, "max_output_tokens": 800}
     )
-    print(f"🤖 使用するモデル: models/gemini-2.5-flash ✅")
+    print(f"🤖 使用するモデル: models/gemini-3.8-flash ✅")
 
 def get_user_session(user_id):
     """ユーザーセッション取得または新規作成"""
