@@ -6,13 +6,13 @@ import os
 
 # ========== 🔧 設定ファイル ==========
 CONFIG_FILE = "elevator_config.json"
-
 DEFAULT_CONFIG = {
     "ALWAYS_VISIBLE_CATEGORY_IDS": [
         1542788842078216295,
         1558092186602704947,
     ],
     "MEMBER_ROLE_NAME": "鯖メン",
+    "FLOOR_ORDER": ["0階"],  # ✅ 順番を保持するリストを追加
     "FLOOR_CONFIG": {
         "0階": {
             "role_name": None,
@@ -22,7 +22,6 @@ DEFAULT_CONFIG = {
                 1558092186602704947,
             ]
         },
-        # 1階・2階は削除済み
     },
     "PANEL_EMBED": {
         "title": "🏢 エレベーター",
@@ -36,17 +35,19 @@ DEFAULT_CONFIG = {
 
 ALWAYS_VISIBLE_CATEGORY_IDS = []
 MEMBER_ROLE_NAME = ""
+FLOOR_ORDER = []  # ✅ 順番用
 FLOOR_CONFIG = {}
 PANEL_EMBED = {}
 
 def load_config():
-    global ALWAYS_VISIBLE_CATEGORY_IDS, MEMBER_ROLE_NAME, FLOOR_CONFIG, PANEL_EMBED
+    global ALWAYS_VISIBLE_CATEGORY_IDS, MEMBER_ROLE_NAME, FLOOR_ORDER, FLOOR_CONFIG, PANEL_EMBED
     if os.path.exists(CONFIG_FILE):
         try:
             with open(CONFIG_FILE, "r", encoding="utf-8") as f:
                 data = json.load(f)
             ALWAYS_VISIBLE_CATEGORY_IDS = data.get("ALWAYS_VISIBLE_CATEGORY_IDS", DEFAULT_CONFIG["ALWAYS_VISIBLE_CATEGORY_IDS"])
             MEMBER_ROLE_NAME = data.get("MEMBER_ROLE_NAME", DEFAULT_CONFIG["MEMBER_ROLE_NAME"])
+            FLOOR_ORDER = data.get("FLOOR_ORDER", list(DEFAULT_CONFIG["FLOOR_CONFIG"].keys()))
             FLOOR_CONFIG = data.get("FLOOR_CONFIG", DEFAULT_CONFIG["FLOOR_CONFIG"])
             PANEL_EMBED = data.get("PANEL_EMBED", DEFAULT_CONFIG["PANEL_EMBED"])
         except Exception as e:
@@ -56,9 +57,10 @@ def load_config():
         set_default_config()
 
 def set_default_config():
-    global ALWAYS_VISIBLE_CATEGORY_IDS, MEMBER_ROLE_NAME, FLOOR_CONFIG, PANEL_EMBED
+    global ALWAYS_VISIBLE_CATEGORY_IDS, MEMBER_ROLE_NAME, FLOOR_ORDER, FLOOR_CONFIG, PANEL_EMBED
     ALWAYS_VISIBLE_CATEGORY_IDS = DEFAULT_CONFIG["ALWAYS_VISIBLE_CATEGORY_IDS"]
     MEMBER_ROLE_NAME = DEFAULT_CONFIG["MEMBER_ROLE_NAME"]
+    FLOOR_ORDER = list(DEFAULT_CONFIG["FLOOR_CONFIG"].keys())
     FLOOR_CONFIG = DEFAULT_CONFIG["FLOOR_CONFIG"]
     PANEL_EMBED = DEFAULT_CONFIG["PANEL_EMBED"]
     save_config()
@@ -67,6 +69,7 @@ def save_config():
     data = {
         "ALWAYS_VISIBLE_CATEGORY_IDS": ALWAYS_VISIBLE_CATEGORY_IDS,
         "MEMBER_ROLE_NAME": MEMBER_ROLE_NAME,
+        "FLOOR_ORDER": FLOOR_ORDER,  # ✅ 順番も保存
         "FLOOR_CONFIG": FLOOR_CONFIG,
         "PANEL_EMBED": PANEL_EMBED,
     }
@@ -77,7 +80,11 @@ load_config()
 
 def build_floor_options(selected_floor=None):
     options = []
-    for floor_name, info in FLOOR_CONFIG.items():
+    # ✅ FLOOR_ORDER の順番通りに表示
+    for floor_name in FLOOR_ORDER:
+        if floor_name not in FLOOR_CONFIG:
+            continue
+        info = FLOOR_CONFIG[floor_name]
         desc = "固定＋雑談が常時表示" if floor_name == "0階" else f"{len(info['category_ids'])}個のカテゴリを表示"
         options.append(discord.SelectOption(
             label=floor_name,
@@ -158,8 +165,15 @@ class EditFloorModal(discord.ui.Modal, title="🏢 階設定"):
                 line = line.strip()
                 if line.isdigit():
                     category_ids.append(int(line))
+        # ✅ 名前変更時は順番リストも更新
         if self.floor_name_target and self.floor_name_target in FLOOR_CONFIG:
+            if self.floor_name_target != new_name:
+                idx = FLOOR_ORDER.index(self.floor_name_target)
+                FLOOR_ORDER[idx] = new_name
             del FLOOR_CONFIG[self.floor_name_target]
+        else:
+            # ✅ 新規追加 → 末尾に追加
+            FLOOR_ORDER.append(new_name)
         FLOOR_CONFIG[new_name] = {
             "role_name": role_name, "role_id": None, "category_ids": category_ids,
         }
@@ -184,7 +198,7 @@ class ElevatorView(discord.ui.View):
         guild = itx.guild
         user = itx.user
         if not is_owner(itx):
-            for floor_name in list(FLOOR_CONFIG.keys()):
+            for floor_name in FLOOR_ORDER:
                 if floor_name == "0階":
                     continue
                 info = FLOOR_CONFIG[floor_name]
@@ -267,10 +281,10 @@ class ElevatorView(discord.ui.View):
             return
         guild = itx.guild
         user = itx.user
-        removed_list = []
-        for floor_name, info in FLOOR_CONFIG.items():
+        for floor_name in FLOOR_ORDER:
             if floor_name == "0階":
                 continue
+            info = FLOOR_CONFIG[floor_name]
             role = None
             if info.get("role_id"):
                 role = guild.get_role(info["role_id"])
@@ -278,10 +292,8 @@ class ElevatorView(discord.ui.View):
                 role = discord.utils.get(guild.roles, name=info["role_name"])
             if role and role in user.roles:
                 await user.remove_roles(role)
-                removed_list.append(f"`{role.name}`")
         await itx.response.send_message(
-            "✅ 全ての階を閉じました。\n📌 0階の状態に戻ります。"
-            if removed_list else "ℹ️ 既に0階です", ephemeral=True
+            "✅ 全ての階を閉じました。\n📌 0階の状態に戻ります。", ephemeral=True
         )
 
 class AdminFloorView(discord.ui.View):
@@ -304,8 +316,54 @@ class AdminFloorView(discord.ui.View):
         await itx.followup.send(f"✅ 【{self.selected_floor}】を選択しました！", ephemeral=True)
 
     @discord.ui.button(
+        label="⬆️ 上へ移動", style=discord.ButtonStyle.secondary,
+        custom_id="elevator_admin:move_up", row=1
+    )
+    async def _move_up_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
+        if not is_owner(itx):
+            await itx.response.send_message("❌ オーナー専用", ephemeral=True)
+            return
+        if not self.selected_floor:
+            await itx.response.send_message("⚠️ 先に上から移動する階を選択してください", ephemeral=True)
+            return
+        idx = FLOOR_ORDER.index(self.selected_floor)
+        if idx == 0:
+            await itx.response.send_message("⚠️ 最上部です（0階は先頭固定）", ephemeral=True)
+            return
+        # ✅ 0階より上には移動不可
+        if FLOOR_ORDER[idx-1] == "0階":
+            await itx.response.send_message("⚠️ 0階より上には移動できません", ephemeral=True)
+            return
+        FLOOR_ORDER[idx], FLOOR_ORDER[idx-1] = FLOOR_ORDER[idx-1], FLOOR_ORDER[idx]
+        save_config()
+        self._update_options()
+        await itx.response.edit_message(view=self)
+        await itx.followup.send(f"✅ 【{self.selected_floor}】を上へ移動しました！", ephemeral=True)
+
+    @discord.ui.button(
+        label="⬇️ 下へ移動", style=discord.ButtonStyle.secondary,
+        custom_id="elevator_admin:move_down", row=1
+    )
+    async def _move_down_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
+        if not is_owner(itx):
+            await itx.response.send_message("❌ オーナー専用", ephemeral=True)
+            return
+        if not self.selected_floor:
+            await itx.response.send_message("⚠️ 先に上から移動する階を選択してください", ephemeral=True)
+            return
+        idx = FLOOR_ORDER.index(self.selected_floor)
+        if idx == len(FLOOR_ORDER) - 1:
+            await itx.response.send_message("⚠️ 最下部です", ephemeral=True)
+            return
+        FLOOR_ORDER[idx], FLOOR_ORDER[idx+1] = FLOOR_ORDER[idx+1], FLOOR_ORDER[idx]
+        save_config()
+        self._update_options()
+        await itx.response.edit_message(view=self)
+        await itx.followup.send(f"✅ 【{self.selected_floor}】を下へ移動しました！", ephemeral=True)
+
+    @discord.ui.button(
         label="➕ 新規階追加", style=discord.ButtonStyle.success,
-        custom_id="elevator_admin:add", row=1
+        custom_id="elevator_admin:add", row=2
     )
     async def _add_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
         if not is_owner(itx):
@@ -315,7 +373,7 @@ class AdminFloorView(discord.ui.View):
 
     @discord.ui.button(
         label="✏️ 選択階を編集", style=discord.ButtonStyle.primary,
-        custom_id="elevator_admin:edit", row=1
+        custom_id="elevator_admin:edit", row=2
     )
     async def _edit_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
         if not is_owner(itx):
@@ -328,7 +386,7 @@ class AdminFloorView(discord.ui.View):
 
     @discord.ui.button(
         label="🗑️ 選択階を削除", style=discord.ButtonStyle.danger,
-        custom_id="elevator_admin:delete", row=2
+        custom_id="elevator_admin:delete", row=3
     )
     async def _del_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
         if not is_owner(itx):
@@ -343,6 +401,7 @@ class AdminFloorView(discord.ui.View):
             return
         if target in FLOOR_CONFIG:
             del FLOOR_CONFIG[target]
+            FLOOR_ORDER.remove(target)  # ✅ 順番リストからも削除
             save_config()
             self.selected_floor = None
             self._update_options()
@@ -355,7 +414,7 @@ class AdminFloorView(discord.ui.View):
 
     @discord.ui.button(
         label="📋 一覧再読込", style=discord.ButtonStyle.secondary,
-        custom_id="elevator_admin:reload", row=2
+        custom_id="elevator_admin:reload", row=3
     )
     async def _reload_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
         load_config()
@@ -382,7 +441,7 @@ async def setup(tree: app_commands.CommandTree, bot=None):
         await itx.response.send_message(embed=make_embed(), view=ElevatorView())
         await itx.followup.send("✅ 設置完了", ephemeral=True)
 
-    @tree.command(name="エレベーターパネル管理", description="⚙️ 階の追加・編集・削除")
+    @tree.command(name="エレベーターパネル管理", description="⚙️ 階の追加・編集・削除・順番変更")
     @app_commands.check(is_owner)
     async def cmd_admin(itx: discord.Interaction):
         load_config()
@@ -390,7 +449,8 @@ async def setup(tree: app_commands.CommandTree, bot=None):
             title="⚙️ エレベーター管理パネル",
             description=(
                 "下のリストから階を選択してから各ボタンを押してください。\n"
-                "✅ 選択中の階はメニューでハイライト表示されます\n"
+                "✅ 0階は常に先頭固定です\n"
+                "⬆️ 上へ移動 / ⬇️ 下へ移動 → 表示順を入れ替え\n"
                 "➕ 新規追加 → 新しい階を作成\n"
                 "✏️ 編集 → 選択した階の設定を変更\n"
                 "🗑️ 削除 → 選択した階を削除（0階は不可）"
