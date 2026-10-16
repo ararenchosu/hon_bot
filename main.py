@@ -11,7 +11,8 @@ from features.slots_panel import setup as slots_setup
 from features.blackjack_panel import setup as blackjack_setup
 from features.highlow_panel import setup as highlow_setup
 from features.point_admin_panel import setup as point_admin_setup
-import features.mines_panel as mines_panel  # ✅ マインス追加
+import features.mines_panel as mines_panel  # ✅ マインス
+import features.point_give_panel as point_give_panel  # ✅ ポイント付与パネル
 import features.embed_sender as embed_sender
 import features.clear_messages as clear_messages
 import features.moderation_panel as moderation_panel
@@ -43,6 +44,7 @@ if not TOKEN_MAIN:
     print("❌ 環境変数 DISCORD_TOKEN が設定されていません")
     exit(1)
 print(f"✅ メイントークン読み込み完了：{TOKEN_MAIN[:10]}...")
+
 intents_main = discord.Intents.default()
 intents_main.message_content = True
 intents_main.members = True
@@ -69,8 +71,10 @@ async def send_status_embed(client, title: str, description: str, color: int):
 
 def clear_reason_file():
     if os.path.exists(REASON_FILE):
-        try: os.remove(REASON_FILE)
-        except: pass
+        try:
+            os.remove(REASON_FILE)
+        except:
+            pass
 
 def set_reason(reason: str):
     with open(REASON_FILE, "w", encoding="utf-8") as f:
@@ -96,6 +100,7 @@ async def on_ready():
     print(f"✅ ログイン：{bot_main.user}")
     
     last_reason = get_and_clear_reason()
+    
     def check_view_no_args(view_class, view_name: str):
         try:
             instance = view_class()
@@ -223,7 +228,7 @@ async def on_close():
         set_reason("update")
 
 # ==================================================
-# 🔵 Bot2：サブBot（マインス追加）
+# 🔵 Bot2：サブBot（マインス + ポイント付与パネル）
 # ==================================================
 TOKEN_SUB = os.getenv("DISCORD_TOKEN_SUB")
 bot_sub = None
@@ -243,24 +248,27 @@ else:
         print(f"\n========== サブBot 起動 ==========")
         print(f"✅ ログイン：{bot_sub.user}")
         
-        # ✅ マインス View 永続登録
         print("\n🔍 サブBot View 永続化登録中...")
         try:
             from features.mines_panel import MinesSetupView
+            from features.point_give_panel import PointGivePanelView
             bot_sub.add_view(MinesSetupView())
             print("  ✅ MinesSetupView")
+            bot_sub.add_view(PointGivePanelView())
+            print("  ✅ PointGivePanelView")
         except Exception as e:
-            print(f"  ❌ マインス View登録エラー: {e}")
+            print(f"  ❌ View登録エラー: {e}")
             import traceback
             traceback.print_exc()
         
-        # ✅ マインス コマンド登録
         print("\n🔄 サブBot コマンド登録中...")
         try:
             await mines_panel.setup(tree_sub, bot_sub)
             print("  ✅ mines_panel")
+            await point_give_panel.setup(tree_sub, bot_sub)
+            print("  ✅ point_give_panel")
         except Exception as e:
-            print(f"  ❌ mines_panel セットアップエラー: {e}")
+            print(f"  ❌ セットアップエラー: {e}")
             import traceback
             traceback.print_exc()
         
