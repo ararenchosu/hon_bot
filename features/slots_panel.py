@@ -21,29 +21,43 @@ PAYOUT = {
     ("🍒", "🍒"): 1 * 15,          # 1倍 → 15倍
 }
 
-def load_data():
+# ========== ✅ くじ引き基準 読み書きに統一 ==========
+def load_all_data():
     if not os.path.exists(DATA_FILE):
-        return {"points": {}}
+        return {}, {}, {}
     try:
         with open(DATA_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception:
-        return {"points": {}}
+            data = json.load(f)
+        points = {}
+        last_draw = data.get("last_lottery_draw", {})
+        last_bonus = data.get("last_bonus_receive", {})
+        for k, v in data.items():
+            if k not in ["last_lottery_draw", "last_bonus_receive"]:
+                points[k] = v
+        return points, last_draw, last_bonus
+    except Exception as e:
+        print(f"⚠️ データ読み込みエラー: {e}")
+        return {}, {}, {}
 
-def save_data(data):
+def save_all_data(points, last_draw, last_bonus):
+    output = dict(points)
+    output["last_lottery_draw"] = last_draw
+    output["last_bonus_receive"] = last_bonus
     with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
+        json.dump(output, f, ensure_ascii=False, indent=2)
 
 def get_points(user_id):
-    return load_data().get("points", {}).get(str(user_id), 0)
+    pts, _, _ = load_all_data()
+    return pts.get(str(user_id), 0)
 
 def add_points(user_id, amount):
-    data = load_data()
+    pts, last_draw, last_bonus = load_all_data()
     uid = str(user_id)
-    data["points"][uid] = data["points"].get(uid, 0) + amount
-    save_data(data)
-    return data["points"][uid]
+    pts[uid] = pts.get(uid, 0) + amount
+    save_all_data(pts, last_draw, last_bonus)
+    return pts[uid]
 
+# ========== スロット処理 ==========
 def spin_slot():
     return [random.choice(SYMBOLS) for _ in range(3)]
 
@@ -234,7 +248,7 @@ async def start_game(itx, bet):
     )
     await itx.response.send_message(embed=embed, view=view, ephemeral=True)
 
-# ✅ botを受け取って永続View登録
+# ✅ 永続View登録
 async def setup(tree: app_commands.CommandTree, bot=None):
     if bot is not None and not hasattr(bot, "_slots_panel_registered"):
         bot.add_view(SlotPanelView())
@@ -242,10 +256,11 @@ async def setup(tree: app_commands.CommandTree, bot=None):
         print("✅ slots_panel 永続View登録完了")
 
     @tree.command(name="スロットパネル設置", description="スロットパネルを設置（オーナー専用）")
-    async def cmd(itx):
+    async def cmd(itx: discord.Interaction):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
             return
+        await itx.response.defer(ephemeral=True)
         embed = discord.Embed(
             title="🎰 スロットマシン",
             description=(
@@ -258,5 +273,4 @@ async def setup(tree: app_commands.CommandTree, bot=None):
             ),
             color=0xFFD700
         )
-        await itx.response.send_message(embed=embed, view=SlotPanelView())
-        await itx.followup.send("✅ スロットパネル設置完了", ephemeral=True)
+        await itx.followup.send(embed=embed, view=SlotPanelView())
