@@ -13,14 +13,53 @@ BJ_RESULT_CHANNEL_ID = 1558770503261491311
 SUITS = ["♠", "♥", "♦", "♣"]
 RANKS = ["A", "2", "3", "4", "5", "6", "7", "8", "9", "10", "J", "Q", "K"]
 
+# ========== ✅ くじ引き基準 読み書きに統一 ==========
+def load_all_data():
+    if not os.path.exists(DATA_FILE):
+        return {}, {}, {}
+    try:
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        points = {}
+        last_draw = data.get("last_lottery_draw", {})
+        last_bonus = data.get("last_bonus_receive", {})
+        for k, v in data.items():
+            if k not in ["last_lottery_draw", "last_bonus_receive"]:
+                points[k] = v
+        return points, last_draw, last_bonus
+    except Exception as e:
+        print(f"⚠️ データ読み込みエラー: {e}")
+        return {}, {}, {}
+
+def save_all_data(points, last_draw, last_bonus):
+    output = dict(points)
+    output["last_lottery_draw"] = last_draw
+    output["last_bonus_receive"] = last_bonus
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(output, f, ensure_ascii=False, indent=2)
+
+def get_points(user_id):
+    pts, _, _ = load_all_data()
+    return pts.get(str(user_id), 0)
+
+def add_points(user_id, amount):
+    pts, last_draw, last_bonus = load_all_data()
+    uid = str(user_id)
+    pts[uid] = pts.get(uid, 0) + amount
+    save_all_data(pts, last_draw, last_bonus)
+    return pts[uid]
+
+# ========== カード/ゲーム処理 ==========
 def create_deck():
     deck = [(s, r) for s in SUITS for r in RANKS]
     random.shuffle(deck)
     return deck
 
 def card_value(rank):
-    if rank in ["J", "Q", "K"]: return 10
-    if rank == "A": return 11
+    if rank in ["J", "Q", "K"]:
+        return 10
+    if rank == "A":
+        return 11
     return int(rank)
 
 def hand_total(cards):
@@ -34,32 +73,12 @@ def hand_total(cards):
 def is_blackjack(cards):
     return len(cards) == 2 and hand_total(cards) == 21
 
-def load_data():
-    if not os.path.exists(DATA_FILE): return {"points": {}}
-    try:
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception: return {"points": {}}
-
-def save_data(data):
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-def get_points(user_id):
-    return load_data().get("points", {}).get(str(user_id), 0)
-
-def add_points(user_id, amount):
-    data = load_data()
-    uid = str(user_id)
-    data["points"][uid] = data["points"].get(uid, 0) + amount
-    save_data(data)
-    return data["points"][uid]
-
 async def send_result_embed(client, user, dealer_cards, player_cards, result_text, change, bet, total, is_free=False):
     channel = client.get_channel(BJ_RESULT_CHANNEL_ID)
     if not channel:
         print(f"⚠️ BJ_RESULT_CHANNEL_ID が見つかりません: {BJ_RESULT_CHANNEL_ID}")
         return
+    
     dealer_str = " ".join(f"{s}{r}" for s, r in dealer_cards)
     player_str = " ".join(f"{s}{r}" for s, r in player_cards)
     title = "🃏 ブラックジャック結果（お試し）" if is_free else "🃏 ブラックジャック結果"
@@ -120,7 +139,8 @@ class BlackjackGameView(discord.ui.View):
         embed = discord.Embed(title="🃏 ブラックジャック", description=mode, color=0x959595 if self.is_free else 0x1ABC9C)
         embed.add_field(name="ディーラー", value=f"{self.hand_str(self.dealer_hand, d_hide)}\n合計: {d_total}", inline=False)
         embed.add_field(name="あなた", value=f"{self.hand_str(self.player_hand)}\n合計: {p_total}", inline=False)
-        if itx: await itx.response.edit_message(embed=embed, view=self)
+        if itx:
+            await itx.response.edit_message(embed=embed, view=self)
 
     async def finish_game(self, itx, result_text, change):
         await self.end_game()
@@ -205,7 +225,7 @@ class BlackjackGameView(discord.ui.View):
 
 class BlackjackPanelView(discord.ui.View):
     def __init__(self):
-        super().__init__(timeout=None)  # ✅ 永続化
+        super().__init__(timeout=None)
 
     @discord.ui.button(
         label="🔍 途中のゲーム",
@@ -288,7 +308,9 @@ async def start_game(itx, bet, is_free=False):
     if not is_free and pts < bet:
         await itx.response.send_message(f"❌ ポイント不足（所持:{pts}P / 必要:{bet}P）", ephemeral=True)
         return
+    
     view = BlackjackGameView(itx.user.id, bet, is_free)
+    
     if is_blackjack(view.player_hand):
         change = int(bet * 1.5) if not is_free else 0
         new_total = 0 if is_free else add_points(itx.user.id, change)
@@ -305,6 +327,7 @@ async def start_game(itx, bet, is_free=False):
         await send_result_embed(itx.client, itx.user, view.dealer_hand, view.player_hand, "ブラックジャック！", change, bet, new_total, is_free)
         del games[itx.user.id]
         return
+    
     mode = "🍀 お試しモード\nポイント増減なし" if is_free else f"賭け：{bet}P\n\nヒット：追加\nスタンド：勝負\nダブル：倍増+1枚"
     embed = discord.Embed(title="🃏 ブラックジャック", description=mode, color=0x1ABC9C)
     hide = not is_free
@@ -316,7 +339,6 @@ async def start_game(itx, bet, is_free=False):
     embed.add_field(name="あなた", value=f"{view.hand_str(view.player_hand)}\n合計: {hand_total(view.player_hand)}", inline=False)
     await itx.response.send_message(embed=embed, view=view, ephemeral=True)
 
-# ✅ botを受け取って永続View登録
 async def setup(tree: app_commands.CommandTree, bot=None):
     if bot is not None and not hasattr(bot, "_blackjack_panel_registered"):
         bot.add_view(BlackjackPanelView())
@@ -328,6 +350,7 @@ async def setup(tree: app_commands.CommandTree, bot=None):
         if not is_owner(itx):
             await itx.response.send_message("❌ 管理者専用", ephemeral=True)
             return
+        await itx.response.defer(ephemeral=True)
         embed = discord.Embed(
             title="🃏 ブラックジャック",
             description="""🔍 途中のゲーム → 消しても再表示
@@ -336,5 +359,4 @@ async def setup(tree: app_commands.CommandTree, bot=None):
 💳 1P/10P/50P/100P → ポイントで対戦""",
             color=0x1ABC9C
         )
-        await itx.response.send_message(embed=embed, view=BlackjackPanelView())
-        await itx.followup.send("✅ 設置完了", ephemeral=True)
+        await itx.followup.send(embed=embed, view=BlackjackPanelView())
