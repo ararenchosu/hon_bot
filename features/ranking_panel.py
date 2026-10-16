@@ -215,7 +215,12 @@ async def setup(tree: app_commands.CommandTree, bot=None):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用コマンドです", ephemeral=True)
             return
-        # ✅ 先に応答を返してから処理実行 → タイムアウト回避
+        
+        # ✅ 応答を先に返す → 「確認中」が消える
         await itx.response.defer(ephemeral=True)
+        
+        # ✅ 非同期でパネル送信
         await setup_panel(itx.channel)
+        
+        # ✅ 完了メッセージを送信
         await itx.followup.send("✅ ランキングパネルを設置しました", ephemeral=True)
