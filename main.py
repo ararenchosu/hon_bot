@@ -28,6 +28,7 @@ import features.welcome_leave as welcome_leave
 import features.voice_channel_panel as voice_panel
 import features.ranking_panel as ranking_panel
 import features.elevator_panel as elevator_panel
+import features.ai_talk as ai_talk  # ✅ AIトーク機能
 
 JST = timezone(timedelta(hours=9))
 STATUS_LOG_CHANNEL_ID = 1559119439981449256
@@ -41,7 +42,6 @@ if not TOKEN_MAIN:
     print("❌ 環境変数 DISCORD_TOKEN が設定されていません")
     exit(1)
 print(f"✅ メイントークン読み込み完了：{TOKEN_MAIN[:10]}...")
-
 intents_main = discord.Intents.default()
 intents_main.message_content = True
 intents_main.members = True
@@ -95,7 +95,6 @@ async def on_ready():
     print(f"✅ ログイン：{bot_main.user}")
     
     last_reason = get_and_clear_reason()
-
     def check_view_no_args(view_class, view_name: str):
         try:
             instance = view_class()
@@ -125,7 +124,7 @@ async def on_ready():
         from features.backup_panel import BackupPanelView, RestoreConfirmView
         from features.command_list_panel import CommandListView
         from features.elevator_panel import ElevatorView
-
+        
         views_to_register_main = [
             (LotteryPanelView, "LotteryPanelView"),
             (PointCheckPanelView, "PointCheckPanelView"),
@@ -153,7 +152,6 @@ async def on_ready():
             (ranking_panel.RankingPanelView, "RankingPanelView"),
             (ElevatorView, "ElevatorView"),
         ]
-
         for view_cls, name in views_to_register_main:
             instance = check_view_no_args(view_cls, name)
             if instance:
@@ -161,12 +159,12 @@ async def on_ready():
                 print(f"   ✅ {name}")
             else:
                 all_ok_main = False
-
+        
         clv = CommandListView()
         clv.tree = tree_main
         bot_main.add_view(clv)
         print("   ✅ CommandListView")
-
+        
         if all_ok_main:
             print("✅ メインBot 全View 永続登録完了 ✨")
         else:
@@ -200,16 +198,15 @@ async def on_ready():
     await voice_panel.setup(tree_main, bot_main); print("  ✅ voice_panel")
     await ranking_panel.setup(tree_main, bot_main); print("  ✅ ranking_panel")
     await elevator_panel.setup(tree_main, bot_main); print("  ✅ elevator_panel")
+    
     print("✅ メインBot 全コマンド登録完了")
-
     print("\n🔄 メインBot グローバル同期中...")
     synced_main = await tree_main.sync()
     print(f"✅ メインBot 同期完了！合計 {len(synced_main)} 件")
-
     print("\n🔄 自動更新タスク起動中...")
     asyncio.create_task(ranking_panel.auto_update_task(bot_main))
     print("✅ ランキング自動更新タスク起動完了")
-
+    
     if last_reason == "restart_button":
         await send_status_embed(bot_main, "✅ 再起動完了",
             "ボタン操作により再起動されました。\n全パネル復旧済みです✨", 0xF39C12)
@@ -225,12 +222,11 @@ async def on_close():
         set_reason("update")
 
 # ==================================================
-# 🔵 Bot2：サブBot — 動画リンク機能削除済み
+# 🔵 Bot2：サブBot（旧）
 # ==================================================
 TOKEN_SUB = os.getenv("DISCORD_TOKEN_SUB")
 bot_sub = None
 tree_sub = None
-
 if not TOKEN_SUB:
     print("⚠️ 環境変数 DISCORD_TOKEN_SUB が未設定 → サブBotは起動しません")
 else:
@@ -240,7 +236,7 @@ else:
     intents_sub.members = True
     bot_sub = discord.Client(intents=intents_sub)
     tree_sub = app_commands.CommandTree(bot_sub)
-
+    
     @bot_sub.event
     async def on_ready():
         print(f"\n========== サブBot 起動 ==========")
@@ -255,6 +251,48 @@ else:
         print("✅ サブBot 準備完了\n")
 
 # ==================================================
+# 🟢 Bot3：AI専用Bot（新規）
+# ==================================================
+TOKEN_AI = os.getenv("DISCORD_TOKEN_AI")
+bot_ai = None
+tree_ai = None
+if not TOKEN_AI:
+    print("⚠️ 環境変数 DISCORD_TOKEN_AI が未設定 → AI Botは起動しません")
+else:
+    print(f"✅ AIトークン読み込み完了：{TOKEN_AI[:10]}...")
+    intents_ai = discord.Intents.default()
+    intents_ai.message_content = True
+    intents_ai.members = True
+    bot_ai = discord.Client(intents=intents_ai)
+    tree_ai = app_commands.CommandTree(bot_ai)
+
+    @bot_ai.event
+    async def on_ready():
+        print(f"\n========== AI Bot 起動 ==========")
+        print(f"✅ ログイン：{bot_ai.user}")
+        
+        # 永続View登録
+        print("\n🔍 AI Bot View 永続化登録中...")
+        try:
+            await ai_talk.setup(tree_ai, bot_ai)
+            print("  ✅ ai_talk setup 完了")
+        except Exception as e:
+            print(f"  ❌ ai_talk setup エラー: {e}")
+            import traceback
+            traceback.print_exc()
+        
+        print("\n🔄 AI Bot グローバル同期中...")
+        synced_ai = await tree_ai.sync()
+        print(f"✅ AI Bot 同期完了！合計 {len(synced_ai)} 件")
+        print("✅ AI Bot 準備完了\n")
+
+    @bot_ai.event
+    async def on_message(message):
+        if message.author.bot:
+            return
+        await ai_talk.process_message(message)
+
+# ==================================================
 # 🚀 並行起動
 # ==================================================
 async def main():
@@ -263,6 +301,8 @@ async def main():
     tasks = [bot_main.start(TOKEN_MAIN)]
     if TOKEN_SUB and bot_sub:
         tasks.append(bot_sub.start(TOKEN_SUB))
+    if TOKEN_AI and bot_ai:
+        tasks.append(bot_ai.start(TOKEN_AI))
     await asyncio.gather(*tasks)
 
 if __name__ == "__main__":
