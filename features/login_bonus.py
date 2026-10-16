@@ -1,177 +1,104 @@
 import discord
-from discord import app_commands
+from datetime import datetime, timedelta, timezone
 from core.common import is_owner
-from core.database import get_connection
-from features.lottery_panel import point_data
+import os
+import json
 
-# ========== パネル保存/読み込み ==========
-def save_login_bonus_panel(channel_id: int, message_id: int, title: str, description: str, color: int):
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute("""
-        CREATE TABLE IF NOT EXISTS login_bonus_panel (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            channel_id TEXT NOT NULL,
-            message_id TEXT NOT NULL UNIQUE,
-            title TEXT NOT NULL,
-            description TEXT NOT NULL,
-            color INTEGER NOT NULL,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-        )
-    """)
-    cur.execute("""
-        INSERT OR REPLACE INTO login_bonus_panel 
-        (channel_id, message_id, title, description, color)
-        VALUES (?, ?, ?, ?, ?)
-    """, (str(channel_id), str(message_id), title, description, color))
-    conn.commit()
-    conn.close()
+JST = timezone(timedelta(hours=9))
+DATA_FILE = "kn_points_data.json"
+BONUS_POINTS = 10  # 1日のボーナスポイント
 
-def get_latest_login_bonus_panel():
-    conn = get_connection()
-    cur = conn.cursor()
-    cur.execute("""
-        SELECT channel_id, message_id, title, description, color
-        FROM login_bonus_panel
-        ORDER BY updated_at DESC
-        LIMIT 1
-    """)
-    r = cur.fetchone()
-    conn.close()
-    if r:
-        return {
-            "channel_id": int(r[0]),
-            "message_id": int(r[1]),
-            "title": r[2],
-            "description": r[3],
-            "color": int(r[4])
-        }
-    return None
-# ===========================================
+# ========== くじ引き基準 読み書き ==========
+def load_all_data():
+    if not os.path.exists(DATA_FILE):
+        return {}, {}, {}
+    try:
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        points = {}
+        last_draw = data.get("last_lottery_draw", {})
+        last_bonus = data.get("last_bonus_receive", {})
+        for k, v in data.items():
+            if k not in ["last_lottery_draw", "last_bonus_receive"]:
+                points[k] = v
+        return points, last_draw, last_bonus
+    except Exception as e:
+        print(f"⚠️ 読み込みエラー: {e}")
+        return {}, {}, {}
 
-class LoginBonusPanelView(discord.ui.View):
+def save_all_data(points, last_draw, last_bonus):
+    output = dict(points)
+    output["last_lottery_draw"] = last_draw
+    output["last_bonus_receive"] = last_bonus
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(output, f, ensure_ascii=False, indent=2)
+
+def get_points(user_id):
+    pts, _, _ = load_all_data()
+    return pts.get(str(user_id), 0)
+
+def add_points(user_id, amount):
+    pts, last_draw, last_bonus = load_all_data()
+    uid = str(user_id)
+    pts[uid] = pts.get(uid, 0) + amount
+    save_all_data(pts, last_draw, last_bonus)
+    return pts[uid]
+
+def can_receive_bonus_today(user_id):
+    _, _, last_bonus = load_all_data()
+    today = datetime.now(JST).strftime("%Y-%m-%d")
+    return last_bonus.get(str(user_id)) != today
+
+def mark_bonus_received(user_id):
+    pts, last_draw, last_bonus = load_all_data()
+    last_bonus[str(user_id)] = datetime.now(JST).strftime("%Y-%m-%d")
+    save_all_data(pts, last_draw, last_bonus)
+
+# ========== View ==========
+class LoginBonusView(discord.ui.View):
     def __init__(self):
-        super().__init__(timeout=None)  # ✅ 永久有効
+        super().__init__(timeout=None)
 
     @discord.ui.button(
-        label="🎁 ログインボーナス受取",
+        label="🎁 ログインボーナス受け取り",
         style=discord.ButtonStyle.primary,
-        custom_id="loginbonus:receive"
+        custom_id="login_bonus:receive"
     )
-    async def receive_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
-        if not point_data.can_receive_bonus_today(itx.user.id):
+    async def receive_btn(self, itx: discord.Interaction, btn):
+        if not can_receive_bonus_today(itx.user.id):
             await itx.response.send_message(
-                "✅ 今日は既に受け取り済みです。また明日お待ちください✨",
+                "❌ 今日は既に受け取っています。また明日お待ちください✨",
                 ephemeral=True
             )
             return
-        point_data.mark_bonus_received(itx.user.id)
-        new_points = point_data.add_points(itx.user.id, 100)
+        
+        mark_bonus_received(itx.user.id)
+        new_points = add_points(itx.user.id, BONUS_POINTS)
         await itx.response.send_message(
-            f"🎉 ログインボーナス受け取り完了！\n"
-            f"➕ 100ポイント 獲得✨\n"
-            f"💳 現在のポイント：{new_points}ポイント",
+            f"🎁 ログインボーナス **{BONUS_POINTS}ポイント** 受け取り✨\n"
+            f"💳 現在のポイント：**{new_points:,}ポイント**",
             ephemeral=True
         )
 
-    @discord.ui.button(
-        label="✏️ パネル編集",
-        style=discord.ButtonStyle.secondary,
-        custom_id="loginbonus:edit"
+async def setup_panel(channel):
+    embed = discord.Embed(
+        title="🎁 1日1回ログインボーナス",
+        description=f"下のボタンを押すと **{BONUS_POINTS}ポイント** 受け取れます✨\n毎日0:00にリセット",
+        color=0x2ECC71
     )
-    async def edit_bonus_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
-        if not is_owner(itx):
-            await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
-            return
-        
-        latest = get_latest_login_bonus_panel()
-        default_title = latest["title"] if latest else "🎁 毎日ログインボーナス"
-        default_desc = latest["description"] if latest else (
-            "⬇️のボタンを押すと1日1回100ポイントがもらえます✨\n"
-            "🗳 くじ引きとは別に受け取れます！"
-        )
-        
-        class BonusEditModal(discord.ui.Modal, title="ログインボーナス編集"):
-            title_in = discord.ui.TextInput(
-                label="タイトル",
-                default=default_title,
-                required=True
-            )
-            desc_in = discord.ui.TextInput(
-                label="説明文",
-                style=discord.TextStyle.long,
-                default=default_desc,
-                required=True
-            )
-            
-            async def on_submit(self, m_itx: discord.Interaction):
-                embed = discord.Embed(
-                    title=str(self.title_in),
-                    description=str(self.desc_in),
-                    color=0x00FF7F
-                )
-                await m_itx.response.edit_message(embed=embed, view=LoginBonusPanelView())
-                save_login_bonus_panel(
-                    m_itx.channel_id,
-                    m_itx.message.id,
-                    str(self.title_in),
-                    str(self.desc_in),
-                    0x00FF7F
-                )
-                await m_itx.followup.send("✅ 更新・保存完了", ephemeral=True)
-        
-        await itx.response.send_modal(BonusEditModal())
+    await channel.send(embed=embed, view=LoginBonusView())
 
-    @discord.ui.button(
-        label="🔄 パネル更新",
-        style=discord.ButtonStyle.secondary,
-        custom_id="loginbonus:refresh"
-    )
-    async def refresh_panel(self, itx: discord.Interaction, btn: discord.ui.Button):
-        if not is_owner(itx):
-            await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
-            return
-        
-        latest = get_latest_login_bonus_panel()
-        if not latest:
-            await itx.response.send_message("⚠️ 保存されたパネルが見つかりません", ephemeral=True)
-            return
-        
-        embed = discord.Embed(
-            title=latest["title"],
-            description=latest["description"],
-            color=latest["color"]
-        )
-        await itx.response.edit_message(embed=embed)
-        await itx.followup.send("✅ パネルを最新に更新しました", ephemeral=True)
-
-# ✅ 引数をbot=Noneにしてmain.pyから呼び出せるように
 async def setup(tree, bot=None):
     if bot is not None and not hasattr(bot, "_login_bonus_registered"):
-        bot.add_view(LoginBonusPanelView())
+        bot.add_view(LoginBonusView())
         bot._login_bonus_registered = True
         print("✅ login_bonus 永続View登録完了")
-    
-    @tree.command(
-        name="ログインボーナスパネル設置",
-        description="ログインボーナスパネルを設置（オーナー専用）"
-    )
-    async def cmd_login_bonus_panel(itx: discord.Interaction):
+
+    @tree.command(name="ログインボーナスパネル設置", description="ログインボーナスパネル設置（オーナー専用）")
+    async def cmd(itx: discord.Interaction):
         if not is_owner(itx):
-            await itx.response.send_message("❌ オーナー専用コマンドです", ephemeral=True)
+            await itx.response.send_message("❌ オーナー専用", ephemeral=True)
             return
-        embed = discord.Embed(
-            title="🎁 毎日ログインボーナス",
-            description="⬇️のボタンを押すと1日1回 **100ポイント** がもらえます✨\n"
-                        "🗳 くじ引きとは別に受け取れます！",
-            color=0x00FF7F
-        )
-        await itx.response.send_message(embed=embed, view=LoginBonusPanelView())
-        msg = await itx.original_response()
-        save_login_bonus_panel(
-            itx.channel_id,
-            msg.id,
-            embed.title,
-            embed.description,
-            embed.color.value
-        )
+        await itx.response.defer(ephemeral=True)
+        await setup_panel(itx.channel)
+        await itx.followup.send("✅ 設置完了", ephemeral=True)
