@@ -70,17 +70,6 @@ def get_ranking(limit=10):
         return []
     return sorted(points_dict.items(), key=lambda x: x[1], reverse=True)[:limit]
 
-def get_user_rank_and_points(user_id):
-    uid = str(user_id)
-    points_dict = load_points_data()
-    if not points_dict or uid not in points_dict:
-        return 0, 0
-    sorted_list = sorted(points_dict.items(), key=lambda x: x[1], reverse=True)
-    for idx, (user_id_str, pts) in enumerate(sorted_list, 1):
-        if user_id_str == uid:
-            return idx, pts
-    return 0, 0
-
 # ========== 埋め込み作成 ==========
 def build_ranking_embed(title, description, guild: discord.Guild):
     ranking = get_ranking(10)
@@ -112,7 +101,7 @@ class RankingPanelView(discord.ui.View):
         style=discord.ButtonStyle.secondary,
         custom_id="ranking:edit"
     )
-    async def edit_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
+    async def edit_btn(self, itx: discord.Interaction, btn):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用です", ephemeral=True)
             return
@@ -134,14 +123,15 @@ class RankingPanelView(discord.ui.View):
                 required=True
             )
             async def on_submit(self, m_itx: discord.Interaction):
+                await m_itx.response.defer(ephemeral=True)
                 embed = build_ranking_embed(str(self.title_in), str(self.desc_in), m_itx.guild)
                 try:
                     msg = await m_itx.channel.fetch_message(panel_data["message_id"])
                     await msg.edit(embed=embed)
                     save_panel(m_itx.channel_id, panel_data["message_id"], str(self.title_in), str(self.desc_in))
-                    await m_itx.response.send_message("✅ 更新・保存完了", ephemeral=True)
+                    await m_itx.followup.send("✅ 更新・保存完了", ephemeral=True)
                 except Exception as e:
-                    await m_itx.response.send_message(f"❌ 更新に失敗: {e}", ephemeral=True)
+                    await m_itx.followup.send(f"❌ 更新に失敗: {e}", ephemeral=True)
         
         await itx.response.send_modal(RankingEditModal())
 
@@ -150,10 +140,8 @@ class RankingPanelView(discord.ui.View):
         style=discord.ButtonStyle.primary,
         custom_id="ranking:refresh"
     )
-    async def refresh_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
-        # ✅ 最初に応答を返す → 「応答なし」を回避
+    async def refresh_btn(self, itx: discord.Interaction, btn):
         await itx.response.defer(ephemeral=True)
-        
         panel_data = get_panel(itx.channel_id)
         if not panel_data:
             await itx.followup.send("❌ パネル情報が見つかりません", ephemeral=True)
@@ -227,5 +215,7 @@ async def setup(tree: app_commands.CommandTree, bot=None):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用コマンドです", ephemeral=True)
             return
+        # ✅ 先に応答を返してから処理実行 → タイムアウト回避
+        await itx.response.defer(ephemeral=True)
         await setup_panel(itx.channel)
-        await itx.response.send_message("✅ ランキングパネルを設置しました", ephemeral=True)
+        await itx.followup.send("✅ ランキングパネルを設置しました", ephemeral=True)
