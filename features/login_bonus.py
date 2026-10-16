@@ -1,14 +1,15 @@
 import discord
+from discord import app_commands
+import asyncio
+import os
 from datetime import datetime, timedelta, timezone
 from core.common import is_owner
-import os
-import json
 
 JST = timezone(timedelta(hours=9))
 DATA_FILE = "kn_points_data.json"
 BONUS_POINTS = 10  # 1日のボーナスポイント
 
-# ========== くじ引き基準 読み書き ==========
+# ========== 共通 読み書き ==========
 def load_all_data():
     if not os.path.exists(DATA_FILE):
         return {}, {}, {}
@@ -54,8 +55,8 @@ def mark_bonus_received(user_id):
     last_bonus[str(user_id)] = datetime.now(JST).strftime("%Y-%m-%d")
     save_all_data(pts, last_draw, last_bonus)
 
-# ========== View ==========
-class LoginBonusView(discord.ui.View):
+# ========== ✅ 名前を LoginBonusPanelView に統一 ==========
+class LoginBonusPanelView(discord.ui.View):
     def __init__(self):
         super().__init__(timeout=None)
 
@@ -86,11 +87,11 @@ async def setup_panel(channel):
         description=f"下のボタンを押すと **{BONUS_POINTS}ポイント** 受け取れます✨\n毎日0:00にリセット",
         color=0x2ECC71
     )
-    await channel.send(embed=embed, view=LoginBonusView())
+    await channel.send(embed=embed, view=LoginBonusPanelView())
 
 async def setup(tree, bot=None):
     if bot is not None and not hasattr(bot, "_login_bonus_registered"):
-        bot.add_view(LoginBonusView())
+        bot.add_view(LoginBonusPanelView())
         bot._login_bonus_registered = True
         print("✅ login_bonus 永続View登録完了")
 
