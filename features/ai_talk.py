@@ -29,10 +29,24 @@ active_channels = {}   # {user_id: channel_id}
 # Gemini初期化
 if GOOGLE_API_KEY:
     genai.configure(api_key=GOOGLE_API_KEY)
+    
+    # 🔍 利用可能なモデルを表示
+    print("=" * 50)
+    print("🔍 利用可能なモデル一覧:")
+    try:
+        for m in genai.list_models():
+            if "generateContent" in m.supported_generation_methods:
+                print(f"   ✅ {m.name}")
+    except Exception as e:
+        print(f"   ❌ モデル一覧取得エラー: {e}")
+    print("=" * 50)
+    
+    # モデル設定
     model = genai.GenerativeModel(
-        model_name="models/gemini-1.5-flash",  # ✅ 正しい形式に修正
+        model_name="gemini-1.5-flash-001",
         generation_config={"temperature": 0.9, "top_p": 0.95, "max_output_tokens": 800}
     )
+    print(f"🤖 使用するモデル: gemini-1.5-flash-001")
 
 def get_user_session(user_id):
     """ユーザーセッション取得または新規作成"""
@@ -64,7 +78,7 @@ async def get_ai_reply(user_id, text):
         return resp.text.strip()[:1500]
     except Exception as e:
         print(f"Geminiエラー: {e}")
-        return "ごめんね、ちょっと考え中✨ もう一度言ってみて！"
+        return f"ごめんね、ちょっと考え中✨ もう一度言ってみて！\n(詳細: {str(e)[:100]})"
 
 # ========== View定義 ==========
 class MainPanelView(discord.ui.View):
