@@ -2,14 +2,13 @@ import discord
 from discord import app_commands
 import random
 from datetime import datetime, timedelta, timezone
-from features.kn_points_data import get_points, add_points
+# ✅ メインと共通：point_admin_panel から読み込む
+from features.point_admin_panel import get_points, add_points
 
 JST = timezone(timedelta(hours=9))
-
 GEM = "💎"
 BOMB = "💣"
 EMPTY = "⬜"
-
 active_games = {}
 
 # ========== 難易度選択パネル ==========
@@ -29,7 +28,7 @@ class MinesSetupView(discord.ui.View):
     async def hard_btn(self, itx: discord.Interaction, btn):
         await itx.response.send_modal(BetModal(size=6, bombs=12, multiplier_rate=1.25))
 
-    # ✅ ポイント確認ボタン追加
+    # ✅ ポイント確認ボタン
     @discord.ui.button(label="📊 所持ポイント確認", style=discord.ButtonStyle.secondary, row=1, custom_id="mines:check_points")
     async def check_points_btn(self, itx: discord.Interaction, btn):
         pts = get_points(itx.user.id)
@@ -71,9 +70,9 @@ class BetModal(discord.ui.Modal, title="💵 賭けるポイントを入力"):
 
         add_points(itx.user.id, -amount)
         after_bet = get_points(itx.user.id)
-
         view = MinesGameView(itx.user.id, self.size, self.bombs, amount, self.multiplier_rate)
         active_games[itx.user.id] = view
+
         embed = discord.Embed(
             title=f"💎 マインスゲーム開始！",
             description=(
@@ -134,7 +133,6 @@ class MinesGameView(discord.ui.View):
         self.quit_btn.callback = self.quit
         self.add_item(self.quit_btn)
 
-        # ✅ ゲーム中にもポイント確認ボタン
         self.check_btn = discord.ui.Button(
             label="📊 ポイント確認",
             style=discord.ButtonStyle.secondary,
@@ -167,7 +165,7 @@ class MinesGameView(discord.ui.View):
 
             if self.grid[row][col]:
                 self.game_over = True
-                for i,b in enumerate(self.children):
+                for i, b in enumerate(self.children):
                     if isinstance(getattr(b, 'row', None), int) and b.row < self.size:
                         r = i // self.size
                         c = i % self.size
@@ -178,9 +176,11 @@ class MinesGameView(discord.ui.View):
                         elif self.revealed[r][c]:
                             b.label = GEM
                             b.style = discord.ButtonStyle.success
+
                 self.cashout_btn.disabled = True
                 self.quit_btn.disabled = True
                 self.check_btn.disabled = True
+
                 embed = discord.Embed(
                     title="💥 ゲームオーバー",
                     description=(
@@ -193,6 +193,7 @@ class MinesGameView(discord.ui.View):
                 await itx.response.edit_message(embed=embed, view=self)
                 if self.user_id in active_games:
                     del active_games[self.user_id]
+
             else:
                 self.multiplier *= self.multiplier_rate
                 opened = sum(sum(r) for r in self.revealed)
@@ -212,6 +213,7 @@ class MinesGameView(discord.ui.View):
                     final_pts = get_points(self.user_id)
                     for b in self.children:
                         b.disabled = True
+
                     embed = discord.Embed(
                         title="🎉 コンプリート！",
                         description=(
@@ -243,12 +245,15 @@ class MinesGameView(discord.ui.View):
         if itx.user.id != self.user_id or self.game_over:
             await itx.response.defer()
             return
+
         self.game_over = True
         reward = int(self.bet * self.multiplier)
         add_points(self.user_id, reward)
         final_pts = get_points(self.user_id)
+
         for b in self.children:
             b.disabled = True
+
         embed = discord.Embed(
             title="💰 配当を受け取りました",
             description=(
@@ -267,10 +272,12 @@ class MinesGameView(discord.ui.View):
         if itx.user.id != self.user_id:
             await itx.response.defer()
             return
+
         self.game_over = True
         add_points(self.user_id, self.bet)
         final_pts = get_points(self.user_id)
         del active_games[self.user_id]
+
         await itx.response.edit_message(
             embed=discord.Embed(
                 title="✅ キャンセル完了",
