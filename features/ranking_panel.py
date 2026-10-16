@@ -10,13 +10,13 @@ JST = timezone(timedelta(hours=9))
 PANEL_TABLE = "ranking_panels"
 DATA_FILE = "kn_points_data.json"
 
-# ========== ✅ point_admin_panelと同じ読み込み方法に統一 ==========
+# ========== データ読み込み ==========
 def load_points_data():
     if not os.path.exists(DATA_FILE):
         return {}
     try:
         with open(DATA_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)  # ✅ 直接全体を返す
+            return json.load(f)
     except Exception as e:
         print(f"⚠️ ポイントデータ読み込みエラー: {e}")
         return {}
@@ -63,7 +63,7 @@ def save_panel(channel_id, message_id, title, description):
     conn.commit()
     conn.close()
 
-# ========== ✅ 統合されたランキング取得 ==========
+# ========== ランキング取得 ==========
 def get_ranking(limit=10):
     points_dict = load_points_data()
     if not points_dict:
@@ -105,7 +105,7 @@ def build_ranking_embed(title, description, guild: discord.Guild):
 # ========== View ==========
 class RankingPanelView(discord.ui.View):
     def __init__(self):
-        super().__init__(timeout=None)  # ✅ 永久有効
+        super().__init__(timeout=None)
 
     @discord.ui.button(
         label="✏️ 内容編集",
@@ -151,17 +151,20 @@ class RankingPanelView(discord.ui.View):
         custom_id="ranking:refresh"
     )
     async def refresh_btn(self, itx: discord.Interaction, btn: discord.ui.Button):
+        # ✅ 最初に応答を返す → 「応答なし」を回避
+        await itx.response.defer(ephemeral=True)
+        
         panel_data = get_panel(itx.channel_id)
         if not panel_data:
-            await itx.response.send_message("❌ パネル情報が見つかりません", ephemeral=True)
+            await itx.followup.send("❌ パネル情報が見つかりません", ephemeral=True)
             return
         embed = build_ranking_embed(panel_data["title"], panel_data["description"], itx.guild)
         try:
             msg = await itx.channel.fetch_message(panel_data["message_id"])
             await msg.edit(embed=embed)
-            await itx.response.send_message("✅ 最新に更新しました", ephemeral=True)
+            await itx.followup.send("✅ 最新に更新しました", ephemeral=True)
         except Exception as e:
-            await itx.response.send_message(f"❌ 更新に失敗: {e}", ephemeral=True)
+            await itx.followup.send(f"❌ 更新に失敗: {e}", ephemeral=True)
 
 # ========== 自動更新タスク ==========
 async def auto_update_task(client: discord.Client):
