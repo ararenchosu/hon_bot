@@ -10,14 +10,13 @@ JST = timezone(timedelta(hours=9))
 PANEL_TABLE = "ranking_panels"
 DATA_FILE = "kn_points_data.json"
 
-# ========== データ読み込み ==========
+# ========== ✅ point_admin_panelと同じ読み込み方法に統一 ==========
 def load_points_data():
     if not os.path.exists(DATA_FILE):
         return {}
     try:
         with open(DATA_FILE, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            return data.get("points", {})
+            return json.load(f)  # ✅ 直接全体を返す
     except Exception as e:
         print(f"⚠️ ポイントデータ読み込みエラー: {e}")
         return {}
@@ -64,7 +63,7 @@ def save_panel(channel_id, message_id, title, description):
     conn.commit()
     conn.close()
 
-# ========== ランキング取得 ==========
+# ========== ✅ 統合されたランキング取得 ==========
 def get_ranking(limit=10):
     points_dict = load_points_data()
     if not points_dict:
@@ -204,7 +203,6 @@ async def setup_panel(channel):
     msg = await channel.send(embed=embed, view=view)
     save_panel(channel.id, msg.id, title, desc)
 
-# ✅ 引数をbot=Noneに統一
 async def setup(tree: app_commands.CommandTree, bot=None):
     init_db()
     
