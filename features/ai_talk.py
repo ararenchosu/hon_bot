@@ -30,7 +30,7 @@ active_channels = {}   # {user_id: channel_id}
 if GOOGLE_API_KEY:
     genai.configure(api_key=GOOGLE_API_KEY)
     model = genai.GenerativeModel(
-        model_name="gemini-2.0-flash-exp",
+        model_name="gemini-1.5-flash",  # ✅ 修正済み
         generation_config={"temperature": 0.9, "top_p": 0.95, "max_output_tokens": 800}
     )
 
