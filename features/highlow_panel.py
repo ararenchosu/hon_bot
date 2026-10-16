@@ -18,6 +18,43 @@ CARD_VALUES = {
 }
 SUITS = ["♠", "♥", "♦", "♣"]
 
+# ========== ✅ くじ引き基準 読み書きに統一 ==========
+def load_all_data():
+    if not os.path.exists(DATA_FILE):
+        return {}, {}, {}
+    try:
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        points = {}
+        last_draw = data.get("last_lottery_draw", {})
+        last_bonus = data.get("last_bonus_receive", {})
+        for k, v in data.items():
+            if k not in ["last_lottery_draw", "last_bonus_receive"]:
+                points[k] = v
+        return points, last_draw, last_bonus
+    except Exception as e:
+        print(f"⚠️ データ読み込みエラー: {e}")
+        return {}, {}, {}
+
+def save_all_data(points, last_draw, last_bonus):
+    output = dict(points)
+    output["last_lottery_draw"] = last_draw
+    output["last_bonus_receive"] = last_bonus
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(output, f, ensure_ascii=False, indent=2)
+
+def get_points(user_id):
+    pts, _, _ = load_all_data()
+    return pts.get(str(user_id), 0)
+
+def add_points(user_id, amount):
+    pts, last_draw, last_bonus = load_all_data()
+    uid = str(user_id)
+    pts[uid] = pts.get(uid, 0) + amount
+    save_all_data(pts, last_draw, last_bonus)
+    return pts[uid]
+
+# ========== カード/ゲーム処理 ==========
 def create_deck():
     deck = [(s, r) for s in SUITS for r in RANKS]
     random.shuffle(deck)
@@ -25,27 +62,6 @@ def create_deck():
 
 def card_value(rank):
     return CARD_VALUES[rank]
-
-def load_data():
-    if not os.path.exists(DATA_FILE): return {"points": {}}
-    try:
-        with open(DATA_FILE, "r", encoding="utf-8") as f:
-            return json.load(f)
-    except Exception: return {"points": {}}
-
-def save_data(data):
-    with open(DATA_FILE, "w", encoding="utf-8") as f:
-        json.dump(data, f, ensure_ascii=False, indent=2)
-
-def get_points(user_id):
-    return load_data().get("points", {}).get(str(user_id), 0)
-
-def add_points(user_id, amount):
-    data = load_data()
-    uid = str(user_id)
-    data["points"][uid] = data["points"].get(uid, 0) + amount
-    save_data(data)
-    return data["points"][uid]
 
 def get_multiplier(streak):
     return 1.0 + (streak - 1) * 0.3
@@ -55,6 +71,7 @@ async def send_result_embed(client, user, first_card, next_card, choice, result_
     if not channel:
         print(f"⚠️ HL_RESULT_CHANNEL_ID が見つかりません: {HL_RESULT_CHANNEL_ID}")
         return
+    
     title = "📈 ハイ＆ロー確定" if is_cashout else ("📈 結果（お試し）" if is_free else "📈 結果")
     color = 0x999999 if is_free else (0x2ECC71 if change >= 0 else 0xE74C3C)
     embed = discord.Embed(title=title, description=f"{user.mention} がプレイ", color=color, timestamp=datetime.now(JST))
@@ -75,7 +92,7 @@ games = {}
 
 class HighLowGameView(discord.ui.View):
     def __init__(self, uid, bet, is_free=False):
-        super().__init__(timeout=180)  # ゲーム中は3分でタイムアウト
+        super().__init__(timeout=180)
         self.user_id = uid
         self.bet = bet
         self.is_free = is_free
@@ -86,14 +103,17 @@ class HighLowGameView(discord.ui.View):
 
     def disable_all_items(self):
         for c in self.children:
-            if isinstance(c, discord.ui.Button): c.disabled = True
+            if isinstance(c, discord.ui.Button):
+                c.disabled = True
 
     async def end_game(self):
-        if self.user_id in games: del games[self.user_id]
+        if self.user_id in games:
+            del games[self.user_id]
 
     async def show_choice_ui(self, itx):
         mode = "🍀 お試し" if self.is_free else f"賭け：{self.bet}P"
-        if self.streak > 0: mode += f"\n🔥{self.streak}連続 ×{get_multiplier(self.streak):.1f}"
+        if self.streak > 0:
+            mode += f"\n🔥{self.streak}連続 ×{get_multiplier(self.streak):.1f}"
         embed = discord.Embed(title="📈 ハイ＆ロー", description=mode, color=0x3498DB)
         embed.add_field(name="現在のカード", value=f"**{card_value(self.first_card[1])}**", inline=False)
         await itx.response.edit_message(embed=embed, view=self)
@@ -102,21 +122,26 @@ class HighLowGameView(discord.ui.View):
         v1 = card_value(self.first_card[1])
         v2 = card_value(next_card[1])
         won = v2 > v1 if choice=="high" else v2 < v1
+        
         if v2 == v1:
-            await send_result_embed(itx.client, itx.user, self.first_card, next_card, choice, "⚖️ 引き分け", 0, self.bet, get_points(self.user_id) if not self.is_free else 0, self.streak, self.is_free)
+            total = get_points(self.user_id) if not self.is_free else 0
+            await send_result_embed(itx.client, itx.user, self.first_card, next_card, choice, "⚖️ 引き分け", 0, self.bet, total, self.streak, self.is_free)
             self.first_card = next_card
             await self.show_choice_ui(itx)
             return
+        
         if won:
             self.streak += 1
-            await send_result_embed(itx.client, itx.user, self.first_card, next_card, choice, f"🎉 当たり！×{get_multiplier(self.streak):.1f}", 0, self.bet, get_points(self.user_id) if not self.is_free else 0, self.streak, self.is_free)
+            total = get_points(self.user_id) if not self.is_free else 0
+            await send_result_embed(itx.client, itx.user, self.first_card, next_card, choice, f"🎉 当たり！×{get_multiplier(self.streak):.1f}", 0, self.bet, total, self.streak, self.is_free)
             self.first_card = next_card
             await self.show_choice_ui(itx)
         else:
             await self.end_game()
             change = -self.bet if not self.is_free else 0
-            total = 0 if self.is_free else add_points(self.user_id, change)
+            total = add_points(self.user_id, change) if not self.is_free else 0
             self.disable_all_items()
+            
             embed = discord.Embed(title="📈 ハイ＆ロー", description="🍀 お試し" if self.is_free else f"賭け：{self.bet}P", color=0xE74C3C)
             embed.add_field(name="1枚目", value=f"{v1}", inline=True)
             embed.add_field(name="2枚目", value=f"{v2}", inline=True)
@@ -149,12 +174,14 @@ class HighLowGameView(discord.ui.View):
         if self.streak == 0:
             await itx.response.send_message("❌ まだ当たっていません", ephemeral=True)
             return
+        
         await self.end_game()
         mult = get_multiplier(self.streak)
         amount = int(self.bet * mult)
         change = amount if not self.is_free else 0
-        total = 0 if self.is_free else add_points(self.user_id, change)
+        total = add_points(self.user_id, change) if not self.is_free else 0
         self.disable_all_items()
+        
         embed = discord.Embed(title="📈 配当確定！", description="🍀 お試し" if self.is_free else f"賭け：{self.bet}P", color=0xF1C40F)
         embed.add_field(name=f"{self.streak}連続", value=f"×{mult:.1f}", inline=True)
         embed.add_field(name="確定額", value=f"+{amount}P", inline=True)
@@ -165,7 +192,7 @@ class HighLowGameView(discord.ui.View):
 
 class HighLowPanelView(discord.ui.View):
     def __init__(self):
-        super().__init__(timeout=None)  # ✅ 永久有効
+        super().__init__(timeout=None)
 
     @discord.ui.button(
         label="🔍 途中のゲーム",
@@ -179,7 +206,8 @@ class HighLowPanelView(discord.ui.View):
             await itx.response.send_message("❌ 進行中のゲームはありません", ephemeral=True)
             return
         mode = "🍀 お試し" if g.is_free else f"賭け：{g.bet}P"
-        if g.streak > 0: mode += f" | {g.streak}連続 ×{get_multiplier(g.streak):.1f}"
+        if g.streak > 0:
+            mode += f" | {g.streak}連続 ×{get_multiplier(g.streak):.1f}"
         embed = discord.Embed(title="📈 ハイ＆ロー【途中再開】", description=mode, color=0x3498DB)
         embed.add_field(name="現在のカード", value=f"**{card_value(g.first_card[1])}**", inline=False)
         await itx.response.send_message(embed=embed, view=g, ephemeral=True)
@@ -241,19 +269,21 @@ class HighLowPanelView(discord.ui.View):
 
 async def start_game(itx, bet, is_free=False):
     pts = get_points(itx.user.id)
+    
     if itx.user.id in games:
         await itx.response.send_message("❌ 進行中です。「🔍 途中のゲーム」から再開してください", ephemeral=True)
         return
+    
     if not is_free and pts < bet:
         await itx.response.send_message(f"❌ ポイント不足（所持:{pts}P / 必要:{bet}P）", ephemeral=True)
         return
+    
     view = HighLowGameView(itx.user.id, bet, is_free)
     mode = "🍀 お試し\nA=1 ～ K=13" if is_free else f"賭け：{bet}P\n📈大きい / 📉小さい\n💰確定→配当GET\nA=1 ～ K=13"
     embed = discord.Embed(title="📈 ハイ＆ロー", description=mode, color=0x3498DB)
     embed.add_field(name="最初の数字", value=f"**{card_value(view.first_card[1])}**", inline=False)
     await itx.response.send_message(embed=embed, view=view, ephemeral=True)
 
-# ✅ 引数をbot=Noneに統一
 async def setup(tree: app_commands.CommandTree, bot=None):
     if bot is not None and not hasattr(bot, "_highlow_registered"):
         bot.add_view(HighLowPanelView())
@@ -265,6 +295,7 @@ async def setup(tree: app_commands.CommandTree, bot=None):
         if not is_owner(itx):
             await itx.response.send_message("❌ オーナー専用コマンドです", ephemeral=True)
             return
+        await itx.response.defer(ephemeral=True)
         embed = discord.Embed(
             title="📈 ハイ＆ロー",
             description="""🔍 途中のゲーム → 消しても再表示
@@ -274,5 +305,4 @@ async def setup(tree: app_commands.CommandTree, bot=None):
 A=1 ～ K=13 の数字で勝負！""",
             color=0x3498DB
         )
-        await itx.response.send_message(embed=embed, view=HighLowPanelView())
-        await itx.followup.send("✅ 設置完了", ephemeral=True)
+        await itx.followup.send(embed=embed, view=HighLowPanelView())
