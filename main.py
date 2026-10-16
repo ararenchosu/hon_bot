@@ -11,6 +11,7 @@ from features.slots_panel import setup as slots_setup
 from features.blackjack_panel import setup as blackjack_setup
 from features.highlow_panel import setup as highlow_setup
 from features.point_admin_panel import setup as point_admin_setup
+import features.mines_panel as mines_panel  # ✅ マインス追加
 import features.embed_sender as embed_sender
 import features.clear_messages as clear_messages
 import features.moderation_panel as moderation_panel
@@ -28,7 +29,7 @@ import features.welcome_leave as welcome_leave
 import features.voice_channel_panel as voice_panel
 import features.ranking_panel as ranking_panel
 import features.elevator_panel as elevator_panel
-import features.ai_talk as ai_talk  # ✅ AIトーク機能
+import features.ai_talk as ai_talk
 
 JST = timezone(timedelta(hours=9))
 STATUS_LOG_CHANNEL_ID = 1559119439981449256
@@ -104,7 +105,7 @@ async def on_ready():
         except TypeError as e:
             print(f"   ❌ 【{view_name}】: 引数が必要 → {e}")
             return None
-
+    
     print("\n🔍 メインBot View 永続化チェック & 登録中...")
     all_ok_main = True
     try:
@@ -173,7 +174,7 @@ async def on_ready():
         print(f"❌ メインBot View登録エラー: {e}")
         import traceback
         traceback.print_exc()
-
+    
     print("\n🔄 メインBot コマンド登録中...")
     await lottery_setup(tree_main, bot_main); print("  ✅ lottery_panel")
     await login_bonus_setup(tree_main, bot_main); print("  ✅ login_bonus")
@@ -222,7 +223,7 @@ async def on_close():
         set_reason("update")
 
 # ==================================================
-# 🔵 Bot2：サブBot（旧）
+# 🔵 Bot2：サブBot（マインス追加）
 # ==================================================
 TOKEN_SUB = os.getenv("DISCORD_TOKEN_SUB")
 bot_sub = None
@@ -241,17 +242,35 @@ else:
     async def on_ready():
         print(f"\n========== サブBot 起動 ==========")
         print(f"✅ ログイン：{bot_sub.user}")
-        print("\n🔍 サブBot View 登録エリア")
-        print("ℹ️ 現在サブBot専用のViewは登録されていません")
-        print("\n🔄 サブBot コマンド登録エリア")
-        print("ℹ️ 現在サブBot専用のコマンドは登録されていません")
+        
+        # ✅ マインス View 永続登録
+        print("\n🔍 サブBot View 永続化登録中...")
+        try:
+            from features.mines_panel import MinesSetupView
+            bot_sub.add_view(MinesSetupView())
+            print("  ✅ MinesSetupView")
+        except Exception as e:
+            print(f"  ❌ マインス View登録エラー: {e}")
+            import traceback
+            traceback.print_exc()
+        
+        # ✅ マインス コマンド登録
+        print("\n🔄 サブBot コマンド登録中...")
+        try:
+            await mines_panel.setup(tree_sub, bot_sub)
+            print("  ✅ mines_panel")
+        except Exception as e:
+            print(f"  ❌ mines_panel セットアップエラー: {e}")
+            import traceback
+            traceback.print_exc()
+        
         print("\n🔄 サブBot グローバル同期中...")
         synced_sub = await tree_sub.sync()
         print(f"✅ サブBot 同期完了！合計 {len(synced_sub)} 件")
         print("✅ サブBot 準備完了\n")
 
 # ==================================================
-# 🟢 Bot3：AI専用Bot（新規）
+# 🟢 Bot3：AI専用Bot
 # ==================================================
 TOKEN_AI = os.getenv("DISCORD_TOKEN_AI")
 bot_ai = None
@@ -265,13 +284,12 @@ else:
     intents_ai.members = True
     bot_ai = discord.Client(intents=intents_ai)
     tree_ai = app_commands.CommandTree(bot_ai)
-
+    
     @bot_ai.event
     async def on_ready():
         print(f"\n========== AI Bot 起動 ==========")
         print(f"✅ ログイン：{bot_ai.user}")
         
-        # 永続View登録
         print("\n🔍 AI Bot View 永続化登録中...")
         try:
             await ai_talk.setup(tree_ai, bot_ai)
@@ -285,7 +303,7 @@ else:
         synced_ai = await tree_ai.sync()
         print(f"✅ AI Bot 同期完了！合計 {len(synced_ai)} 件")
         print("✅ AI Bot 準備完了\n")
-
+    
     @bot_ai.event
     async def on_message(message):
         if message.author.bot:
