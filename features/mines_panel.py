@@ -2,14 +2,51 @@ import discord
 from discord import app_commands
 import random
 from datetime import datetime, timedelta, timezone
-# ✅ メインと共通：point_admin_panel から読み込む
-from features.point_admin_panel import get_points, add_points
+from core.common import is_owner
 
 JST = timezone(timedelta(hours=9))
+DATA_FILE = "kn_points_data.json"
 GEM = "💎"
 BOMB = "💣"
 EMPTY = "⬜"
 active_games = {}
+
+# ========== ✅ くじ引き基準の読み書きに統一 ==========
+def load_all_data():
+    if not os.path.exists(DATA_FILE):
+        return {}, {}, {}
+    try:
+        with open(DATA_FILE, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        # ユーザーポイントと管理キーを分離
+        points = {}
+        last_draw = data.get("last_lottery_draw", {})
+        last_bonus = data.get("last_bonus_receive", {})
+        for k, v in data.items():
+            if k not in ["last_lottery_draw", "last_bonus_receive"]:
+                points[k] = v
+        return points, last_draw, last_bonus
+    except Exception as e:
+        print(f"⚠️ データ読み込みエラー: {e}")
+        return {}, {}, {}
+
+def save_all_data(points, last_draw, last_bonus):
+    output = dict(points)
+    output["last_lottery_draw"] = last_draw
+    output["last_bonus_receive"] = last_bonus
+    with open(DATA_FILE, "w", encoding="utf-8") as f:
+        json.dump(output, f, ensure_ascii=False, indent=2)
+
+def get_points(user_id: int):
+    pts, _, _ = load_all_data()
+    return pts.get(str(user_id), 0)
+
+def add_points(user_id: int, amount: int):
+    pts, last_draw, last_bonus = load_all_data()
+    uid = str(user_id)
+    pts[uid] = pts.get(uid, 0) + amount
+    save_all_data(pts, last_draw, last_bonus)
+    return pts[uid]
 
 # ========== 難易度選択パネル ==========
 class MinesSetupView(discord.ui.View):
@@ -28,8 +65,12 @@ class MinesSetupView(discord.ui.View):
     async def hard_btn(self, itx: discord.Interaction, btn):
         await itx.response.send_modal(BetModal(size=6, bombs=12, multiplier_rate=1.25))
 
-    # ✅ ポイント確認ボタン
-    @discord.ui.button(label="📊 所持ポイント確認", style=discord.ButtonStyle.secondary, row=1, custom_id="mines:check_points")
+    @discord.ui.button(
+        label="📊 所持ポイント確認",
+        style=discord.ButtonStyle.secondary,
+        row=1,
+        custom_id="mines:check_points"
+    )
     async def check_points_btn(self, itx: discord.Interaction, btn):
         pts = get_points(itx.user.id)
         await itx.response.send_message(
@@ -52,17 +93,18 @@ class BetModal(discord.ui.Modal, title="💵 賭けるポイントを入力"):
         self.multiplier_rate = multiplier_rate
 
     async def on_submit(self, itx: discord.Interaction):
+        await itx.response.defer(ephemeral=True)
         try:
             amount = int(self.bet_amount.value)
             if amount <= 0:
                 raise ValueError
         except:
-            await itx.response.send_message("❌ 正しい数値を入力してください", ephemeral=True)
+            await itx.followup.send("❌ 正しい数値を入力してください", ephemeral=True)
             return
 
         current_points = get_points(itx.user.id)
         if current_points < amount:
-            await itx.response.send_message(
+            await itx.followup.send(
                 f"❌ ポイントが足りません！\n現在：{current_points:,} pt\n必要：{amount:,} pt",
                 ephemeral=True
             )
@@ -84,7 +126,7 @@ class BetModal(discord.ui.Modal, title="💵 賭けるポイントを入力"):
             ),
             color=0x3498DB
         )
-        await itx.response.send_message(embed=embed, view=view)
+        await itx.followup.send(embed=embed, view=view)
 
 # ========== ゲーム本体 ==========
 class MinesGameView(discord.ui.View):
@@ -166,8 +208,8 @@ class MinesGameView(discord.ui.View):
             if self.grid[row][col]:
                 self.game_over = True
                 for i, b in enumerate(self.children):
-                    if isinstance(getattr(b, 'row', None), int) and b.row < self.size:
-                        r = i // self.size
+                    if hasattr(b, 'row') and isinstance(b.row, int) and b.row < self.size:
+                        r = b.row
                         c = i % self.size
                         b.disabled = True
                         if self.grid[r][c]:
@@ -289,12 +331,14 @@ class MinesGameView(discord.ui.View):
 
 # ========== セットアップ ==========
 async def setup(tree: app_commands.CommandTree, bot=None):
-    if bot:
+    if bot is not None and not hasattr(bot, "_mines_registered"):
         bot.add_view(MinesSetupView())
-        print("  ✅ mines_panel 永続View登録完了")
+        bot._mines_registered = True
+        print("✅ mines_panel 永続View登録完了")
 
     @tree.command(name="minesパネル", description="💎 マインスゲームパネルを表示")
     async def cmd_mines_panel(itx: discord.Interaction):
+        await itx.response.defer(ephemeral=True)
         embed = discord.Embed(
             title="💎 マインスゲーム",
             description=(
@@ -307,4 +351,4 @@ async def setup(tree: app_commands.CommandTree, bot=None):
             ),
             color=0x3498DB
         )
-        await itx.response.send_message(embed=embed, view=MinesSetupView())
+        await itx.followup.send(embed=embed, view=MinesSetupView())
