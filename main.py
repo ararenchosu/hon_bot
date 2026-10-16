@@ -11,8 +11,8 @@ from features.slots_panel import setup as slots_setup
 from features.blackjack_panel import setup as blackjack_setup
 from features.highlow_panel import setup as highlow_setup
 from features.point_admin_panel import setup as point_admin_setup
-import features.mines_panel as mines_panel  # ✅ マインス
-import features.point_give_panel as point_give_panel  # ✅ ポイント付与パネル
+import features.mines_panel as mines_panel
+import features.point_give_panel as point_give_panel
 import features.embed_sender as embed_sender
 import features.clear_messages as clear_messages
 import features.moderation_panel as moderation_panel
@@ -30,7 +30,6 @@ import features.welcome_leave as welcome_leave
 import features.voice_channel_panel as voice_panel
 import features.ranking_panel as ranking_panel
 import features.elevator_panel as elevator_panel
-import features.ai_talk as ai_talk
 
 JST = timezone(timedelta(hours=9))
 STATUS_LOG_CHANNEL_ID = 1559119439981449256
@@ -278,47 +277,6 @@ else:
         print("✅ サブBot 準備完了\n")
 
 # ==================================================
-# 🟢 Bot3：AI専用Bot
-# ==================================================
-TOKEN_AI = os.getenv("DISCORD_TOKEN_AI")
-bot_ai = None
-tree_ai = None
-if not TOKEN_AI:
-    print("⚠️ 環境変数 DISCORD_TOKEN_AI が未設定 → AI Botは起動しません")
-else:
-    print(f"✅ AIトークン読み込み完了：{TOKEN_AI[:10]}...")
-    intents_ai = discord.Intents.default()
-    intents_ai.message_content = True
-    intents_ai.members = True
-    bot_ai = discord.Client(intents=intents_ai)
-    tree_ai = app_commands.CommandTree(bot_ai)
-    
-    @bot_ai.event
-    async def on_ready():
-        print(f"\n========== AI Bot 起動 ==========")
-        print(f"✅ ログイン：{bot_ai.user}")
-        
-        print("\n🔍 AI Bot View 永続化登録中...")
-        try:
-            await ai_talk.setup(tree_ai, bot_ai)
-            print("  ✅ ai_talk setup 完了")
-        except Exception as e:
-            print(f"  ❌ ai_talk setup エラー: {e}")
-            import traceback
-            traceback.print_exc()
-        
-        print("\n🔄 AI Bot グローバル同期中...")
-        synced_ai = await tree_ai.sync()
-        print(f"✅ AI Bot 同期完了！合計 {len(synced_ai)} 件")
-        print("✅ AI Bot 準備完了\n")
-    
-    @bot_ai.event
-    async def on_message(message):
-        if message.author.bot:
-            return
-        await ai_talk.process_message(message)
-
-# ==================================================
 # 🚀 並行起動
 # ==================================================
 async def main():
@@ -327,8 +285,6 @@ async def main():
     tasks = [bot_main.start(TOKEN_MAIN)]
     if TOKEN_SUB and bot_sub:
         tasks.append(bot_sub.start(TOKEN_SUB))
-    if TOKEN_AI and bot_ai:
-        tasks.append(bot_ai.start(TOKEN_AI))
     await asyncio.gather(*tasks)
 
 if __name__ == "__main__":
